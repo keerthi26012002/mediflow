@@ -1,0 +1,2 @@
+# MediFlow-AI-Real-Time-Hospital-Bed-Emergency-Prediction-System.
+MediFlow AI is a healthcare operations intelligence platform that ingests  real-time hospital data such as patient admissions, emergency cases,  ICU occupancy, ambulance requests, and staff availability. Data streams  through Apache Kafka, gets processed using FastAPI services, and is analyzed using ML models to predict Patient inflow &amp; emergency. 
