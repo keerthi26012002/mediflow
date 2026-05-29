@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediFlow AI — Hospital Bed & Emergency Prediction Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Chart.js CDN for live forecast visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="logo-glow">M</div>
+      <h1>MediFlow AI Operations Control</h1>
+    </div>
+    <div class="system-time">
+      <span class="pulse-dot"></span>
+      <span id="connection-status">Live Replay Connection</span>
+      <span style="margin: 0 0.5rem; opacity: 0.2;">|</span>
+      <span id="current-sim-time">Initializing...</span>
+    </div>
+  </header>
+
+  <!-- Main Dashboard Grid -->
+  <main class="dashboard-grid">
+
+    <!-- Top Metrics Strip -->
+    <section class="metrics-strip">
+      
+      <!-- Card 1: Patient Admission Rate -->
+      <div class="glass-card metric-card card-blue" id="metric-admissions">
+        <div class="metric-info">
+          <h3>Patients / Hour</h3>
+          <div class="metric-value" id="val-patients-hr">0</div>
+          <div class="metric-trend" id="trend-patients-hr">Inflow over last 60m</div>
+        </div>
+        <div class="metric-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        </div>
+      </div>
+
+      <!-- Card 2: Free ICU Beds -->
+      <div class="glass-card metric-card card-cyan" id="metric-icu">
+        <div class="metric-info">
+          <h3>ICU Beds Free</h3>
+          <div class="metric-value" id="val-icu-beds">0</div>
+          <div class="metric-trend" id="trend-icu-beds">Latest active capacity</div>
+        </div>
+        <div class="metric-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16M2 8h18M2 12h18M2 16h18M22 4v16M10 8V4M14 8V4"/></svg>
+        </div>
+      </div>
+
+      <!-- Card 3: Avg Wait Time -->
+      <div class="glass-card metric-card card-yellow" id="metric-wait">
+        <div class="metric-info">
+          <h3>Avg Wait Time</h3>
+          <div class="metric-value" id="val-wait-time">0<span style="font-size: 1rem; font-weight: 500; margin-left: 2px;">m</span></div>
+          <div class="metric-trend" id="trend-wait-time">Rolling emergency average</div>
+        </div>
+        <div class="metric-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </div>
+      </div>
+
+      <!-- Card 4: Overload Alerts Status -->
+      <div class="glass-card metric-card card-status" id="metric-status">
+        <div class="metric-info">
+          <h3>System Status</h3>
+          <div class="metric-value" id="val-system-status">NOMINAL</div>
+          <div class="metric-trend" id="trend-system-status">No active warnings</div>
+        </div>
+        <div class="metric-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Main Content: Middle Panel Split -->
+    <section class="main-content">
+      
+      <!-- Bed Occupancy Forecast Chart -->
+      <div class="glass-card" id="chart-panel">
+        <div class="card-header">
+          <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            24-Hour Bed Occupancy Predictive Forecast
+          </h2>
+          <span style="font-size: 0.8rem; color: var(--text-muted);" id="forecast-model-badge">Model: Stubbed</span>
+        </div>
+        <div style="position: relative; height: 350px; width: 100%;">
+          <canvas id="forecastChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Real-Time Emergency Alerts Feed -->
+      <div class="glass-card" id="alert-panel">
+        <div class="card-header">
+          <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            Live Emergency Alerts
+          </h2>
+          <span class="system-time" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" id="websocket-status">WS Disconnected</span>
+        </div>
+        <div class="alert-feed-container" id="alert-feed">
+          <div class="empty-alerts">
+            <div class="empty-alerts-icon">🔔</div>
+            <p>Listening for real-time overload triggers...</p>
+            <span style="font-size: 0.8rem; opacity: 0.7;">System will flash here if admissions exceed threshold.</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Bottom Panel: Department Load Heatmap -->
+    <section class="glass-card" id="heatmap-panel">
+      <div class="card-header">
+        <h2>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          Dynamic Department Load Intensity Matrix
+        </h2>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">Last 8 Hours Load Tracking</span>
+      </div>
+      <div class="heatmap-container">
+        <table class="heatmap-table">
+          <thead>
+            <tr id="heatmap-time-headers">
+              <th style="text-align: left; width: 180px;">Department</th>
+              <!-- Hours will load dynamically here -->
+            </tr>
+          </thead>
+          <tbody id="heatmap-body">
+            <!-- Rows will load dynamically here -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
