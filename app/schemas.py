@@ -35,6 +35,10 @@ class PredictionResponse(BaseModel):
     overload: bool
     model_loaded: bool
 
+    model_config = {
+        "protected_namespaces": ()
+    }
+
 class AlertResponse(BaseModel):
     timestamp: str
     message: str
@@ -58,3 +62,8 @@ class BedForecastResponse(BaseModel):
     hours: int
     forecast: List[BedForecastPoint]
     model_loaded: bool
+
+    model_config = {
+        "protected_namespaces": ()
+    }
+
