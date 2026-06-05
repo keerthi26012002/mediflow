@@ -98,6 +98,120 @@ async def handle_icu_snapshot(snapshot: dict):
     except Exception as e:
         print(f"Error handling ICU snapshot: {e}")
 
+def run_mock_ingestion_sync(loop: asyncio.AbstractEventLoop):
+    """Fallback generator running inside consumer thread when Kafka is not available.
+    It reads the CSV directly, applies feature engineering logic and generates events,
+    inserting them directly into MongoDB to simulate the streaming pipeline."""
+    import hashlib
+    import pandas as pd
+    from faker import Faker
+    
+    CSV_PATH = "datasets/Hospital ER_Data.csv"
+    if not os.path.exists(CSV_PATH):
+        print(f"[Mock Consumer] Error: Dataset CSV not found at {CSV_PATH}. Mock streaming aborted.")
+        return
+        
+    print("[Mock Consumer] Loading CSV for mock streaming...")
+    try:
+        df = pd.read_csv(CSV_PATH)
+    except Exception as e:
+        print(f"[Mock Consumer] Error reading CSV: {e}")
+        return
+        
+    # Standardize schema
+    df = df.rename(columns={
+        "Patient Id": "patient_id",
+        "Patient Admission Date": "timestamp",
+        "Patient Age": "age",
+        "Patient Gender": "gender",
+        "Patient Waittime": "wait_time",
+        "Department Referral": "department",
+        "Patient Admission Flag": "admitted",
+        "Patient Satisfaction Score": "satisfaction_score",
+        "Patient Race": "race"
+    })
+    df["department"] = df["department"].fillna("Self-Referral")
+    df["satisfaction_score"] = df["satisfaction_score"].fillna(3.0)
+    
+    # Sort chronologically
+    df["parsed_time"] = pd.to_datetime(df["timestamp"], format="%d-%m-%Y %H:%M")
+    df = df.sort_values(by="parsed_time").reset_index(drop=True)
+    
+    fake = Faker()
+    
+    def get_deterministic_seed(timestamp_str: str) -> int:
+        return int(hashlib.md5(timestamp_str.encode("utf-8")).hexdigest(), 16) % 100000000
+
+    def derive_severity_level(wait_time: int, department: str) -> int:
+        dept = str(department).lower()
+        if "card" in dept or "icu" in dept or "emerg" in dept:
+            base = 1
+        elif "ortho" in dept or "ped" in dept:
+            base = 3
+        else:
+            base = 4
+        if wait_time < 15:
+            severity = base
+        elif wait_time < 30:
+            severity = min(5, base + 1)
+        elif wait_time < 60:
+            severity = min(5, base + 2)
+        else:
+            severity = min(5, base + 3)
+        return max(1, min(5, severity))
+
+    print("[Mock Consumer] Starting mock streaming loop. Press Ctrl+C in server to stop.")
+    last_icu_time = 0
+    
+    # Loop infinitely to keep the simulation alive
+    while True:
+        for idx, row in df.iterrows():
+            ts_str = row["timestamp"]
+            seed = get_deterministic_seed(ts_str)
+            fake.seed_instance(seed)
+            
+            # Generate seeded simulated fields
+            icu_beds_available = fake.random_int(min=0, max=50)
+            ambulance_requests = fake.random_int(min=0, max=10)
+            doctor_availability = fake.random_int(min=5, max=30)
+            oxygen_utilization = round(fake.random.uniform(40.0, 100.0), 2)
+            severity_level = derive_severity_level(row["wait_time"], row["department"])
+            
+            event = {
+                "patient_id": row["patient_id"],
+                "timestamp": ts_str,
+                "age": int(row["age"]),
+                "gender": row["gender"],
+                "wait_time": int(row["wait_time"]),
+                "department": row["department"],
+                "admitted": bool(row["admitted"]),
+                "satisfaction_score": float(row["satisfaction_score"]),
+                "race": row["race"],
+                "icu_beds_available": icu_beds_available,
+                "ambulance_requests": ambulance_requests,
+                "doctor_availability": doctor_availability,
+                "oxygen_utilization": oxygen_utilization,
+                "emergency_severity_level": severity_level
+            }
+            
+            # Dispatch to async handler
+            asyncio.run_coroutine_threadsafe(handle_patient_flow(event), loop)
+            
+            # Dispatch ICU status every 30 iterations
+            current_time = time.time()
+            if (current_time - last_icu_time) >= 30:
+                icu_event = {
+                    "timestamp": ts_str,
+                    "icu_beds_available": icu_beds_available,
+                    "oxygen_utilization": oxygen_utilization,
+                    "doctor_availability": doctor_availability,
+                    "ambulance_requests": ambulance_requests
+                }
+                asyncio.run_coroutine_threadsafe(handle_icu_snapshot(icu_event), loop)
+                last_icu_time = current_time
+                
+            time.sleep(1)
+
 def run_consumer_thread(loop: asyncio.AbstractEventLoop):
     """Sync loop function running inside a background thread."""
     while True:
@@ -129,11 +243,12 @@ def run_consumer_thread(loop: asyncio.AbstractEventLoop):
                     break  # Break out to trigger reconnect
                 
         except NoBrokersAvailable:
-            print("Kafka brokers not available. Retrying in 10 seconds...")
+            print("Kafka brokers not available. Running in MOCK INGESTION mode (generating synthetic entries directly)...")
+            run_mock_ingestion_sync(loop)
+            break
         except Exception as e:
             print(f"Error starting Kafka consumer thread: {e}. Retrying in 10 seconds...")
-            
-        time.sleep(10)
+            time.sleep(10)
 
 def start_background_consumer():
     """Launches the background thread running the Kafka consumer loop."""
