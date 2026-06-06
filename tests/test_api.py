@@ -57,8 +57,11 @@ def test_history_admissions_empty(mock_get_db):
     assert response.status_code == 200
     assert response.json() == []
 
-def test_predict_admission_stub():
+@patch("app.ml.inference._xgb_model", None)
+@patch("app.ml.inference.load_models")
+def test_predict_admission_stub(mock_load_models):
     """Verify on-demand stub inference endpoint returns the correct structure."""
+    mock_load_models.return_value = None
     event_payload = {
         "patient_id": "test-patient-123",
         "timestamp": "30-05-2026 23:30",
@@ -84,8 +87,11 @@ def test_predict_admission_stub():
     assert "admission_proba" in res_data
     assert res_data["model_loaded"] is False  # In stub mode, should be False
 
-def test_forecast_beds_stub():
+@patch("app.ml.inference._prophet_model", None)
+@patch("app.ml.inference.load_models")
+def test_forecast_beds_stub(mock_load_models):
     """Verify that bed forecast endpoint returns predicted occupancy points."""
+    mock_load_models.return_value = None
     response = client.get("/forecast/beds?hours=12")
     assert response.status_code == 200
     res_data = response.json()
@@ -94,3 +100,4 @@ def test_forecast_beds_stub():
     assert "ts" in res_data["forecast"][0]
     assert "predicted_occupancy" in res_data["forecast"][0]
     assert res_data["model_loaded"] is False  # Stubbed by default
+
