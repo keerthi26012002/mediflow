@@ -1,4 +1,5 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 import joblib
 import pandas as pd
 import xgboost as xgb
@@ -52,7 +53,8 @@ def train_xgb_classifier():
         max_depth=5,
         learning_rate=0.1,
         random_state=42,
-        eval_metric="logloss"
+        eval_metric="logloss",
+        device="cpu"
     )
     
     model.fit(X_train, y_train)
