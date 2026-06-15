@@ -3,6 +3,7 @@ import json
 import asyncio
 import threading
 import time
+import math
 from datetime import datetime, timedelta
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
@@ -177,6 +178,34 @@ def run_mock_ingestion_sync(loop: asyncio.AbstractEventLoop):
             oxygen_utilization = round(fake.random.uniform(40.0, 100.0), 2)
             severity_level = derive_severity_level(row["wait_time"], row["department"])
             
+            # Calculate admitted using the identical Clinical Triage Rules
+            score = 0
+            if severity_level == 1:
+                score += 0.8
+            elif severity_level == 2:
+                score += 0.6
+            elif severity_level == 3:
+                score += 0.3
+                
+            if int(row["age"]) > 70:
+                score += 0.2
+            elif int(row["age"]) < 10:
+                score += 0.1
+                
+            if int(row["wait_time"]) > 45:
+                score += 0.2
+                
+            dept = str(row["department"]).lower()
+            if "icu" in dept or "card" in dept:
+                score += 0.4
+            elif "emerg" in dept:
+                score += 0.2
+            elif "self" in dept:
+                score -= 0.3
+                
+            prob = 1 / (1 + math.exp(-score))
+            admitted_flag = bool(prob >= 0.55)
+
             event = {
                 "patient_id": row["patient_id"],
                 "timestamp": ts_str,
@@ -184,7 +213,7 @@ def run_mock_ingestion_sync(loop: asyncio.AbstractEventLoop):
                 "gender": row["gender"],
                 "wait_time": int(row["wait_time"]),
                 "department": row["department"],
-                "admitted": bool(row["admitted"]),
+                "admitted": admitted_flag,
                 "satisfaction_score": float(row["satisfaction_score"]),
                 "race": row["race"],
                 "icu_beds_available": icu_beds_available,

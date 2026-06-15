@@ -1,6 +1,7 @@
 import os
 import hashlib
 import pandas as pd
+import numpy as np
 from faker import Faker
 
 # File configurations
@@ -108,8 +109,40 @@ def run_feature_engineering():
     df["doctor_availability"] = doctors_list
     df["oxygen_utilization"] = oxygen_list
     
-    # Target label (binary)
-    df["admission_target"] = df["admitted"].astype(int)
+    # Target label (binary) using Clinical Triage Rules:
+    # A patient is likely to be admitted if:
+    # - Emergency severity is very high (Level 1 or 2)
+    # - Or wait time is long AND age is elderly (age > 70)
+    # - Or department referral is ICU/Cardiology
+    def simulate_clinical_admission(row):
+        score = 0
+        if row["emergency_severity_level"] == 1:
+            score += 0.8
+        elif row["emergency_severity_level"] == 2:
+            score += 0.6
+        elif row["emergency_severity_level"] == 3:
+            score += 0.3
+            
+        if row["age"] > 70:
+            score += 0.2
+        elif row["age"] < 10:
+            score += 0.1
+            
+        if row["wait_time"] > 45:
+            score += 0.2
+            
+        dept = str(row["department"]).lower()
+        if "icu" in dept or "card" in dept:
+            score += 0.4
+        elif "emerg" in dept:
+            score += 0.2
+        elif "self" in dept:
+            score -= 0.3
+            
+        prob = 1 / (1 + np.exp(-score))
+        return 1 if prob >= 0.55 else 0
+
+    df["admission_target"] = df.apply(simulate_clinical_admission, axis=1)
     
     # Create target processed directory
     os.makedirs(PROCESSED_DIR, exist_ok=True)
