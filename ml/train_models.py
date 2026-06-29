@@ -1,9 +1,14 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
+import sys
 import joblib
 import pandas as pd
 import xgboost as xgb
 from prophet import Prophet
+from sklearn.metrics import accuracy_score, roc_auc_score
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from app.ml.simple_forecaster import SimpleHourlyForecaster
 
 # File Configurations
 PROCESSED_CLASSIFICATION_CSV = "data/processed/processed_dataset.csv"
@@ -28,14 +33,13 @@ def train_xgb_classifier():
     # Feature columns matching inference schema
     feature_cols = [
         "age", "gender", "emergency_severity_level", "hour", "day_of_week",
-        "is_weekend", "wait_time", "department", "icu_beds_available",
-        "ambulance_requests", "doctor_availability", "oxygen_utilization"
+        "is_weekend", "shift", "wait_time", "department_encoded",
+        "arrival_mode_encoded", "triage_level_encoded", "icu_beds_available",
+        "general_beds_available", "ambulance_requests", "doctor_availability",
+        "nurse_availability", "oxygen_utilization", "ventilator_availability",
+        "capacity_risk_score", "hospital_load_index", "overload_risk_score"
     ]
-    
-    # Map department category to integer indexes
-    depts = ["Self-Referral", "Cardiology", "ICU", "Emergency", "Orthopedics", "Pediatrics"]
-    df["department"] = df["department"].apply(lambda d: depts.index(d) if d in depts else 0)
-    
+
     X = df[feature_cols]
     y = df["admission_target"]
     
@@ -58,6 +62,12 @@ def train_xgb_classifier():
     )
     
     model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:, 1]
+    print(f"Accuracy: {accuracy_score(y_test, y_pred):.3f}")
+    if len(set(y_test)) > 1:
+        print(f"ROC AUC: {roc_auc_score(y_test, y_proba):.3f}")
     
     # Save Model
     os.makedirs(MODEL_DIR, exist_ok=True)
@@ -73,21 +83,24 @@ def train_prophet_forecaster():
         
     df = pd.read_csv(PROCESSED_FORECAST_CSV)
     
-    # Initialize Prophet model with daily and weekly seasonality
-    model = Prophet(
-        growth="linear",
-        yearly_seasonality=False,
-        weekly_seasonality=True,
-        daily_seasonality=True
-    )
-    
-    # Fit the model
-    model.fit(df)
+    try:
+        model = Prophet(
+            growth="linear",
+            yearly_seasonality=False,
+            weekly_seasonality=True,
+            daily_seasonality=True
+        )
+        model.fit(df)
+        model_name = "Prophet"
+    except Exception as e:
+        print(f"Prophet training unavailable ({e}). Training SimpleHourlyForecaster fallback.")
+        model = SimpleHourlyForecaster().fit(df)
+        model_name = "SimpleHourlyForecaster"
     
     # Save the model
     os.makedirs(MODEL_DIR, exist_ok=True)
     joblib.dump(model, PROPHET_MODEL_PATH)
-    print(f"Prophet model successfully saved to {PROPHET_MODEL_PATH}")
+    print(f"{model_name} model successfully saved to {PROPHET_MODEL_PATH}")
     return model
 
 def main():

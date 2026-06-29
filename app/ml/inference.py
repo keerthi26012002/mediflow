@@ -7,6 +7,17 @@ from datetime import datetime, timedelta
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 XGB_MODEL_PATH = os.path.join(MODEL_DIR, "model_xgb.pkl")
 PROPHET_MODEL_PATH = os.path.join(MODEL_DIR, "model_prophet.pkl")
+DEPARTMENTS = ["Self-Referral", "Emergency", "ICU", "Cardiology", "Neurology", "Pediatrics", "Orthopedics", "General Medicine"]
+ARRIVAL_MODES = ["Walk-in", "Ambulance", "Transfer"]
+TRIAGE_LEVELS = ["Critical", "Urgent", "Semi-Urgent", "Non-Urgent", "Unspecified"]
+FEATURE_COLS = [
+    "age", "gender", "emergency_severity_level", "hour", "day_of_week",
+    "is_weekend", "shift", "wait_time", "department_encoded",
+    "arrival_mode_encoded", "triage_level_encoded", "icu_beds_available",
+    "general_beds_available", "ambulance_requests", "doctor_availability",
+    "nurse_availability", "oxygen_utilization", "ventilator_availability",
+    "capacity_risk_score", "hospital_load_index", "overload_risk_score"
+]
 
 # Keep track of loaded models
 _xgb_model = None
@@ -30,6 +41,25 @@ def load_models():
         except Exception as e:
             print(f"Error loading Prophet model: {e}")
 
+def encode_category(value, categories):
+    value = str(value)
+    return categories.index(value) if value in categories else 0
+
+def get_shift(hour: int) -> int:
+    if 6 <= hour < 14:
+        return 0
+    if 14 <= hour < 22:
+        return 1
+    return 2
+
+def parse_event_datetime(timestamp: str) -> datetime:
+    for fmt in ("%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+        try:
+            return datetime.strptime(timestamp, fmt)
+        except ValueError:
+            continue
+    return datetime.now()
+
 def predict_admission(event: dict) -> dict:
     """
     Predicts if a patient event will lead to admission.
@@ -43,31 +73,30 @@ def predict_admission(event: dict) -> dict:
         try:
             # Prepare feature vector from the event dictionary.
             # (Note: Feature processing logic will be fully aligned in Phase 2)
-            # Map values
-            gender_val = 1 if str(event.get("gender", "")).lower() == "m" else 0
-            
-            # Extract datetime features
-            dt = datetime.strptime(event.get("timestamp", ""), "%d-%m-%Y %H:%M")
+            gender_val = 1 if str(event.get("gender", "")).lower() in ("m", "male") else 0
+            dt = parse_event_datetime(event.get("timestamp", ""))
             hour = dt.hour
             day_of_week = dt.weekday()
             is_weekend = 1 if day_of_week >= 5 else 0
+            shift = get_shift(hour)
             
-            # Simple numeric features mapping
             age = float(event.get("age", 40))
             wait_time = float(event.get("wait_time", 30))
             severity = float(event.get("emergency_severity_level", 3))
             icu_beds = float(event.get("icu_beds_available", 10))
+            general_beds = float(event.get("general_beds_available", 160))
             ambulance = float(event.get("ambulance_requests", 2))
             docs = float(event.get("doctor_availability", 15))
+            nurses = float(event.get("nurse_availability", docs * 2))
             oxygen = float(event.get("oxygen_utilization", 70.0))
-            
-            # For category 'department', let's use a very basic encoding or mapping
-            # (Phase 2 feature_engineering will build the formal dictionary)
-            # Just define a list of common depts so features are aligned.
-            depts = ["Self-Referral", "Cardiology", "ICU", "Emergency", "Orthopedics", "Pediatrics"]
-            dept_encoded = depts.index(event.get("department", "Self-Referral")) if event.get("department") in depts else 0
-            
-            # Feature ordering must match training:
+            ventilators = float(event.get("ventilator_availability", max(0, icu_beds // 3)))
+            capacity_risk = float(event.get("capacity_risk_score", 0.0))
+            load_index = float(event.get("hospital_load_index", 0.0))
+            overload_risk = float(event.get("overload_risk_score", 0.0))
+            dept_encoded = encode_category(event.get("department", "Self-Referral"), DEPARTMENTS)
+            arrival_encoded = encode_category(event.get("arrival_mode", "Walk-in"), ARRIVAL_MODES)
+            triage_encoded = encode_category(event.get("triage_level", "Unspecified"), TRIAGE_LEVELS)
+
             features = pd.DataFrame([{
                 "age": age,
                 "gender": gender_val,
@@ -75,21 +104,23 @@ def predict_admission(event: dict) -> dict:
                 "hour": hour,
                 "day_of_week": day_of_week,
                 "is_weekend": is_weekend,
+                "shift": shift,
                 "wait_time": wait_time,
-                "department": dept_encoded,
+                "department_encoded": dept_encoded,
+                "arrival_mode_encoded": arrival_encoded,
+                "triage_level_encoded": triage_encoded,
                 "icu_beds_available": icu_beds,
+                "general_beds_available": general_beds,
                 "ambulance_requests": ambulance,
                 "doctor_availability": docs,
-                "oxygen_utilization": oxygen
+                "nurse_availability": nurses,
+                "oxygen_utilization": oxygen,
+                "ventilator_availability": ventilators,
+                "capacity_risk_score": capacity_risk,
+                "hospital_load_index": load_index,
+                "overload_risk_score": overload_risk
             }])
-            
-            # Reorder columns to ensure exact match with training
-            feature_cols = [
-                "age", "gender", "emergency_severity_level", "hour", "day_of_week",
-                "is_weekend", "wait_time", "department", "icu_beds_available",
-                "ambulance_requests", "doctor_availability", "oxygen_utilization"
-            ]
-            features = features[feature_cols]
+            features = features[FEATURE_COLS]
             
             # Predict
             proba = float(_xgb_model.predict_proba(features)[0][1])

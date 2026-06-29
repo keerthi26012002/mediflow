@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from app.db import init_db, close_db
 from app.consumer import start_background_consumer
 from app.websocket_manager import manager
-from app.routers import dashboard, predictions, forecast
+from app.routers import dashboard, predictions, forecast, auth
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,6 +35,7 @@ app.add_middleware(
 )
 
 # Include Routers
+app.include_router(auth.router)
 app.include_router(dashboard.router)
 app.include_router(predictions.router)
 app.include_router(forecast.router)

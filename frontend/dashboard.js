@@ -5,21 +5,125 @@ const WS_BASE = window.location.origin.replace(/^http/, 'ws');
 let forecastChart = null;
 const DEPARTMENTS = ["Cardiology", "ICU", "Emergency", "Orthopedics", "Pediatrics", "Self-Referral"];
 
+// Authenticated fetch wrapper that handles credentials and auto-token refresh
+async function authenticatedFetch(url, options = {}) {
+  options.credentials = "include";
+  let res = await fetch(url, options);
+  
+  if (res.status === 401) {
+    console.warn("Access token expired (401). Attempting silent refresh...");
+    try {
+      const refreshRes = await fetch(`${API_BASE}/auth/refresh`, { method: "POST", credentials: "include" });
+      if (refreshRes.ok) {
+        console.log("Token successfully refreshed. Retrying original request...");
+        res = await fetch(url, options);
+      } else {
+        throw new Error("Refresh failed");
+      }
+    } catch (e) {
+      console.error("Session expired or refresh failed. Redirecting to login...", e);
+      sessionStorage.removeItem("mediflowSession");
+      window.location.reload();
+    }
+  }
+  return res;
+}
+
 // Initialize
 document.addEventListener("DOMContentLoaded", () => {
+  setupLogin();
+});
+
+async function setupLogin() {
+  const loginForm = document.getElementById("login-form");
+  
+  // Verify if already authenticated on backend
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+    if (res.ok) {
+      const user = await res.json();
+      sessionStorage.setItem("mediflowSession", JSON.stringify(user));
+      showDashboard();
+      return;
+    }
+  } catch (e) {
+    console.log("No active backend session:", e);
+  }
+
+  const savedSession = sessionStorage.getItem("mediflowSession");
+  if (savedSession) {
+    showDashboard();
+    return;
+  }
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = document.getElementById("login-email").value.trim();
+    const password = document.getElementById("login-password").value.trim();
+    const role = document.getElementById("login-role").value;
+    const error = document.getElementById("login-error");
+
+    error.innerText = "";
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role }),
+        credentials: "include"
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        error.innerText = errData.detail || "Authentication failed.";
+        return;
+      }
+
+      const data = await res.json();
+      sessionStorage.setItem("mediflowSession", JSON.stringify(data.user));
+      showDashboard();
+    } catch (err) {
+      error.innerText = "Server connection error.";
+      console.error(err);
+    }
+  });
+}
+
+function showDashboard() {
+  document.getElementById("login-screen").hidden = true;
+  document.querySelectorAll(".app-shell").forEach(el => {
+    el.hidden = false;
+  });
+
+  const session = JSON.parse(sessionStorage.getItem("mediflowSession") || "{}");
+  document.getElementById("user-email-display").innerText = session.email || "guest";
+  document.getElementById("user-role-display").innerText = session.role || "Analyst";
+
+  // Wire logout trigger
+  const logoutLink = document.getElementById("logout-link");
+  if (logoutLink) {
+    logoutLink.onclick = async (e) => {
+      e.preventDefault();
+      try {
+        await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+      } catch (err) {
+        console.error("Logout request failed:", err);
+      }
+      sessionStorage.removeItem("mediflowSession");
+      window.location.reload();
+    };
+  }
+
   setupChart();
   initWebSocket();
-  
-  // Initial load
   refreshDashboard();
-  
-  // Polling intervals (5 seconds for metrics & heatmap, 30 seconds for ML forecast)
   setInterval(refreshDashboard, 5000);
   setInterval(refreshForecast, 30000);
-});
+}
 
 async function refreshDashboard() {
   await fetchLiveMetrics();
+  await fetchOperationalSnapshot();
   await fetchHeatmapData();
 }
 
@@ -27,10 +131,82 @@ async function refreshForecast() {
   await fetchForecastData();
 }
 
+// 1b. Fetch operations control-tower snapshot
+async function fetchOperationalSnapshot() {
+  try {
+    const res = await authenticatedFetch(`${API_BASE}/dashboard/operations`);
+    if (!res.ok) throw new Error("Operations endpoint failed");
+
+    const data = await res.json();
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.innerText = value;
+    };
+    const setMeter = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.value = Math.max(0, Math.min(100, Number(value) || 0));
+    };
+
+    setText("digital-twin-state", data.digital_twin_state);
+    setText("load-index", `${data.hospital_load_index}%`);
+    setText("capacity-risk", `${data.capacity_risk_score}%`);
+    setText("overload-risk", `${data.overload_risk_score}%`);
+    setMeter("load-meter", data.hospital_load_index);
+    setMeter("capacity-meter", data.capacity_risk_score);
+    setMeter("overload-meter", data.overload_risk_score);
+
+    setText("general-beds", data.bed_capacity.general_free);
+    setText("doctor-count", data.staff.doctors_available);
+    setText("nurse-count", data.staff.nurses_available);
+    setText("ambulance-count", data.emergency_resources.ambulance_requests);
+    setText("oxygen-use", `${data.emergency_resources.oxygen_utilization}%`);
+    setText("ventilator-count", data.emergency_resources.ventilators_available);
+
+    renderTopicList(data.kafka_topics || []);
+    renderControlList("security-list", data.security_controls || []);
+    renderRecommendations(data.recommendations || []);
+  } catch (err) {
+    console.error("Error fetching operational snapshot:", err);
+  }
+}
+
+function renderTopicList(topics) {
+  const list = document.getElementById("topic-list");
+  if (!list) return;
+  list.innerHTML = topics.map(topic => `
+    <div class="topic-row">
+      <div>
+        <strong>${topic.name}</strong>
+        <span>${topic.events} recent event(s)</span>
+      </div>
+      <em class="${String(topic.status).toLowerCase()}">${topic.status}</em>
+    </div>
+  `).join("");
+}
+
+function renderControlList(elementId, controls) {
+  const list = document.getElementById(elementId);
+  if (!list) return;
+  list.innerHTML = controls.map(control => `
+    <div class="control-row">
+      <span>${control.name}</span>
+      <strong class="${String(control.status).toLowerCase()}">${control.status}</strong>
+    </div>
+  `).join("");
+}
+
+function renderRecommendations(recommendations) {
+  const list = document.getElementById("recommendation-list");
+  if (!list) return;
+  list.innerHTML = recommendations.map(item => `
+    <div class="recommendation-item">${item}</div>
+  `).join("");
+}
+
 // 1. Fetch live metrics
 async function fetchLiveMetrics() {
   try {
-    const res = await fetch(`${API_BASE}/dashboard/live`);
+    const res = await authenticatedFetch(`${API_BASE}/dashboard/live`);
     if (!res.ok) throw new Error("Metrics endpoint failed");
     
     const data = await res.json();
@@ -126,7 +302,7 @@ function setupChart() {
 // 3. Fetch Bed Forecast from API
 async function fetchForecastData() {
   try {
-    const res = await fetch(`${API_BASE}/forecast/beds?hours=24`);
+    const res = await authenticatedFetch(`${API_BASE}/forecast/beds?hours=24`);
     if (!res.ok) throw new Error("Forecast endpoint failed");
     
     const data = await res.json();
@@ -216,7 +392,7 @@ function addAlertToFeed(alert) {
 // 5. Fetch Heatmap Load Data
 async function fetchHeatmapData() {
   try {
-    const res = await fetch(`${API_BASE}/history/admissions?limit=100`);
+    const res = await authenticatedFetch(`${API_BASE}/history/admissions?limit=100`);
     if (!res.ok) throw new Error("History admissions endpoint failed");
     
     const events = await res.json();

@@ -10,22 +10,64 @@
 </head>
 <body>
 
+  <!-- Login Page -->
+  <section class="login-screen" id="login-screen">
+    <div class="login-panel">
+      <div class="login-brand">
+        <div class="logo-glow">M</div>
+        <div>
+          <h1>MediFlow AI</h1>
+          <p>Hospital Operations Intelligence</p>
+        </div>
+      </div>
+      <form class="login-form" id="login-form">
+        <label>
+          Email
+          <input type="email" id="login-email" value="admin@mediflow.ai" autocomplete="username" required>
+        </label>
+        <label>
+          Password
+          <input type="password" id="login-password" value="mediflow123" autocomplete="current-password" required>
+        </label>
+        <label>
+          Role
+          <select id="login-role">
+            <option>Admin</option>
+            <option>Doctor</option>
+            <option>Emergency Lead</option>
+            <option>Analyst</option>
+          </select>
+        </label>
+        <button type="submit">Sign In</button>
+        <p class="login-error" id="login-error"></p>
+      </form>
+    </div>
+  </section>
+
   <!-- Header -->
-  <header>
+  <header class="app-shell" hidden>
     <div class="brand">
       <div class="logo-glow">M</div>
       <h1>MediFlow AI Operations Control</h1>
     </div>
-    <div class="system-time">
-      <span class="pulse-dot"></span>
-      <span id="connection-status">Live Replay Connection</span>
-      <span style="margin: 0 0.5rem; opacity: 0.2;">|</span>
-      <span id="current-sim-time">Initializing...</span>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <div class="system-time">
+        <span class="pulse-dot"></span>
+        <span id="connection-status">Live Replay Connection</span>
+        <span style="margin: 0 0.5rem; opacity: 0.2;">|</span>
+        <span id="current-sim-time">Initializing...</span>
+      </div>
+      <div class="system-time" style="background: rgba(255, 255, 255, 0.04);">
+        <span id="user-email-display" style="font-weight: 500; color: var(--text-primary);">...</span>
+        <span class="mini-badge" id="user-role-display" style="background: var(--accent-blue-glow); color: var(--accent-blue); border-color: rgba(59, 130, 246, 0.3);">...</span>
+        <span style="margin: 0 0.25rem; opacity: 0.2;">|</span>
+        <a href="#" id="logout-link" style="color: var(--status-danger); text-decoration: none; font-weight: 600; font-size: 0.85rem; transition: var(--transition-smooth);">Sign Out</a>
+      </div>
     </div>
   </header>
 
   <!-- Main Dashboard Grid -->
-  <main class="dashboard-grid">
+  <main class="dashboard-grid app-shell" hidden>
 
     <!-- Top Metrics Strip -->
     <section class="metrics-strip">
@@ -78,6 +120,72 @@
         </div>
       </div>
 
+    </section>
+
+    <!-- Operations Intelligence Layer -->
+    <section class="ops-grid">
+      <div class="glass-card ops-card">
+        <div class="card-header compact">
+          <h2>Hospital Digital Twin</h2>
+          <span class="mini-badge" id="digital-twin-state">Initializing</span>
+        </div>
+        <div class="risk-stack">
+          <div class="risk-row">
+            <span>Load Index</span>
+            <strong id="load-index">0%</strong>
+            <meter id="load-meter" min="0" max="100" value="0"></meter>
+          </div>
+          <div class="risk-row">
+            <span>Capacity Risk</span>
+            <strong id="capacity-risk">0%</strong>
+            <meter id="capacity-meter" min="0" max="100" value="0"></meter>
+          </div>
+          <div class="risk-row">
+            <span>Overload Risk</span>
+            <strong id="overload-risk">0%</strong>
+            <meter id="overload-meter" min="0" max="100" value="0"></meter>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card ops-card">
+        <div class="card-header compact">
+          <h2>Resource Command</h2>
+          <span class="mini-badge">Live Supply</span>
+        </div>
+        <div class="resource-grid">
+          <div><span>General Beds</span><strong id="general-beds">0</strong></div>
+          <div><span>Doctors</span><strong id="doctor-count">0</strong></div>
+          <div><span>Nurses</span><strong id="nurse-count">0</strong></div>
+          <div><span>Ambulances</span><strong id="ambulance-count">0</strong></div>
+          <div><span>Oxygen</span><strong id="oxygen-use">0%</strong></div>
+          <div><span>Ventilators</span><strong id="ventilator-count">0</strong></div>
+        </div>
+      </div>
+
+      <div class="glass-card ops-card">
+        <div class="card-header compact">
+          <h2>Kafka Topics</h2>
+          <span class="mini-badge">Streaming</span>
+        </div>
+        <div class="topic-list" id="topic-list"></div>
+      </div>
+
+      <div class="glass-card ops-card">
+        <div class="card-header compact">
+          <h2>Security & Audit</h2>
+          <span class="mini-badge">Access Layer</span>
+        </div>
+        <div class="control-list" id="security-list"></div>
+      </div>
+
+      <div class="glass-card ops-card ops-wide">
+        <div class="card-header compact">
+          <h2>AI Recommendations</h2>
+          <span class="mini-badge">Decision Support</span>
+        </div>
+        <div class="recommendation-list" id="recommendation-list"></div>
+      </div>
     </section>
 
     <!-- Main Content: Middle Panel Split -->

@@ -4,8 +4,9 @@ import joblib
 import pandas as pd
 from unittest.mock import MagicMock
 
-XGB_MODEL_PATH = "app/ml/models/model_xgb.pkl"
-PROPHET_MODEL_PATH = "app/ml/models/model_prophet.pkl"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+XGB_MODEL_PATH = os.path.join(BASE_DIR, "app", "ml", "models", "model_xgb.pkl")
+PROPHET_MODEL_PATH = os.path.join(BASE_DIR, "app", "ml", "models", "model_prophet.pkl")
 
 def test_xgb_model_load_and_predict():
     """Test loading and performing a prediction using the trained XGBoost model if it exists."""
@@ -20,16 +21,25 @@ def test_xgb_model_load_and_predict():
     sample_df = pd.DataFrame([{
         "age": 45.0,
         "gender": 1,
-        "emergency_severity_level": 3,
+        "emergency_severity_level": 3.0,
         "hour": 14,
         "day_of_week": 2,
         "is_weekend": 0,
+        "shift": 1,
         "wait_time": 45.0,
-        "department": 3,
-        "icu_beds_available": 12,
-        "ambulance_requests": 2,
-        "doctor_availability": 15,
-        "oxygen_utilization": 80.0
+        "department_encoded": 3,
+        "arrival_mode_encoded": 1,
+        "triage_level_encoded": 2,
+        "icu_beds_available": 12.0,
+        "general_beds_available": 150.0,
+        "ambulance_requests": 2.0,
+        "doctor_availability": 15.0,
+        "nurse_availability": 30.0,
+        "oxygen_utilization": 80.0,
+        "ventilator_availability": 4.0,
+        "capacity_risk_score": 35.5,
+        "hospital_load_index": 42.0,
+        "overload_risk_score": 50.0
     }])
     
     pred = model.predict(sample_df)

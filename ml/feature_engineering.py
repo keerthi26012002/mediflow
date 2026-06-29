@@ -1,14 +1,19 @@
 import os
+import argparse
 import hashlib
 import pandas as pd
 import numpy as np
 from faker import Faker
 
 # File configurations
-RAW_CSV_PATH = "datasets/Hospital ER_Data.csv"
+RAW_CSV_PATH = "datasets/MediFlow_AI_Synthetic_Dataset.csv"
+FALLBACK_RAW_CSV_PATH = "datasets/Hospital ER_Data.csv"
 PROCESSED_DIR = "data/processed"
 PROCESSED_CLASSIFICATION_CSV = os.path.join(PROCESSED_DIR, "processed_dataset.csv")
 PROCESSED_FORECAST_CSV = os.path.join(PROCESSED_DIR, "hourly_counts.csv")
+DEPARTMENTS = ["Self-Referral", "Emergency", "ICU", "Cardiology", "Neurology", "Pediatrics", "Orthopedics", "General Medicine"]
+ARRIVAL_MODES = ["Walk-in", "Ambulance", "Transfer"]
+TRIAGE_LEVELS = ["Critical", "Urgent", "Semi-Urgent", "Non-Urgent", "Unspecified"]
 
 def get_deterministic_seed(timestamp_str: str) -> int:
     """Generate a deterministic seed integer from a timestamp string."""
@@ -44,15 +49,11 @@ def get_shift(hour: int) -> int:
     else:
         return 2  # Night
 
-def run_feature_engineering():
-    print(f"Loading raw dataset from {RAW_CSV_PATH}...")
-    if not os.path.exists(RAW_CSV_PATH):
-        print(f"Error: Raw CSV not found at {RAW_CSV_PATH}.")
-        return
-        
-    df = pd.read_csv(RAW_CSV_PATH)
-    
-    # 1. Map columns to match logical fields
+def encode_category(value, categories):
+    value = str(value)
+    return categories.index(value) if value in categories else 0
+
+def normalize_schema(df: pd.DataFrame) -> pd.DataFrame:
     df = df.rename(columns={
         "Patient Id": "patient_id",
         "Patient Admission Date": "timestamp",
@@ -64,86 +65,142 @@ def run_feature_engineering():
         "Patient Satisfaction Score": "satisfaction_score",
         "Patient Race": "race"
     })
-    
-    # Fill missing values
+
+    if "patient_id" not in df.columns:
+        df["patient_id"] = [f"P{i + 1:06d}" for i in range(len(df))]
+    if "race" not in df.columns:
+        df["race"] = "Not Recorded"
+    if "satisfaction_score" not in df.columns:
+        df["satisfaction_score"] = 3.0
+    if "arrival_mode" not in df.columns:
+        df["arrival_mode"] = "Walk-in"
+    if "triage_level" not in df.columns:
+        df["triage_level"] = "Unspecified"
+
     df["department"] = df["department"].fillna("Self-Referral")
+    df["department"] = df["department"].replace({"None": "Self-Referral", "General Practice": "General Medicine"})
     df["satisfaction_score"] = df["satisfaction_score"].fillna(3.0)
-    
-    # Convert dates
-    df["parsed_timestamp"] = pd.to_datetime(df["timestamp"], format="%d-%m-%Y %H:%M")
+    parsed_timestamp = pd.to_datetime(df["timestamp"], errors="coerce")
+    missing_timestamp = parsed_timestamp.isna()
+    if missing_timestamp.any():
+        parsed_timestamp.loc[missing_timestamp] = pd.to_datetime(
+            df.loc[missing_timestamp, "timestamp"],
+            errors="coerce",
+            dayfirst=True
+        )
+    df["parsed_timestamp"] = parsed_timestamp
+    df = df.dropna(subset=["parsed_timestamp"]).copy()
     df = df.sort_values(by="parsed_timestamp").reset_index(drop=True)
-    
-    # 2. Extract standard time features
+
     df["hour"] = df["parsed_timestamp"].dt.hour
     df["day_of_week"] = df["parsed_timestamp"].dt.dayofweek
     df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
     df["shift"] = df["hour"].apply(get_shift)
-    df["gender"] = df["gender"].apply(lambda g: 1 if str(g).lower() == "m" else 0)
-    
-    # 3. Derive emergency severity level (1-5)
-    df["emergency_severity_level"] = df.apply(
-        lambda r: derive_severity_level(r["wait_time"], r["department"]), 
-        axis=1
-    )
-    
-    # 4. Generate deterministic synthetic attributes
-    print("Generating simulated parameters (ICU capacity, ambulance calls, etc.)...")
-    fake = Faker()
-    
-    icu_beds_list = []
-    ambulance_list = []
-    doctors_list = []
-    oxygen_list = []
-    
-    for idx, row in df.iterrows():
-        seed = get_deterministic_seed(row["timestamp"])
-        fake.seed_instance(seed)
-        
-        icu_beds_list.append(fake.random_int(min=0, max=50))
-        ambulance_list.append(fake.random_int(min=0, max=10))
-        doctors_list.append(fake.random_int(min=5, max=30))
-        oxygen_list.append(round(fake.random.uniform(40.0, 100.0), 2))
-        
-    df["icu_beds_available"] = icu_beds_list
-    df["ambulance_requests"] = ambulance_list
-    df["doctor_availability"] = doctors_list
-    df["oxygen_utilization"] = oxygen_list
-    
-    # Target label (binary) using Clinical Triage Rules:
-    # A patient is likely to be admitted if:
-    # - Emergency severity is very high (Level 1 or 2)
-    # - Or wait time is long AND age is elderly (age > 70)
-    # - Or department referral is ICU/Cardiology
-    def simulate_clinical_admission(row):
-        score = 0
-        if row["emergency_severity_level"] == 1:
-            score += 0.8
-        elif row["emergency_severity_level"] == 2:
-            score += 0.6
-        elif row["emergency_severity_level"] == 3:
-            score += 0.3
-            
-        if row["age"] > 70:
-            score += 0.2
-        elif row["age"] < 10:
-            score += 0.1
-            
-        if row["wait_time"] > 45:
-            score += 0.2
-            
-        dept = str(row["department"]).lower()
-        if "icu" in dept or "card" in dept:
-            score += 0.4
-        elif "emerg" in dept:
-            score += 0.2
-        elif "self" in dept:
-            score -= 0.3
-            
-        prob = 1 / (1 + np.exp(-score))
-        return 1 if prob >= 0.55 else 0
 
-    df["admission_target"] = df.apply(simulate_clinical_admission, axis=1)
-    
+    if "emergency_severity_level" not in df.columns:
+        df["emergency_severity_level"] = df.apply(
+            lambda r: derive_severity_level(r["wait_time"], r["department"]),
+            axis=1
+        )
+
+    return df
+
+def add_missing_operational_fields(df: pd.DataFrame) -> pd.DataFrame:
+    print("Filling missing operational parameters for model training...")
+    fake = Faker()
+
+    field_defaults = {
+        "icu_beds_available": lambda f: f.random_int(min=0, max=50),
+        "general_beds_available": lambda f: f.random_int(min=40, max=240),
+        "ambulance_requests": lambda f: f.random_int(min=0, max=10),
+        "doctor_availability": lambda f: f.random_int(min=5, max=30),
+        "nurse_availability": lambda f: f.random_int(min=12, max=70),
+        "oxygen_utilization": lambda f: round(f.random.uniform(40.0, 100.0), 2),
+        "ventilator_availability": lambda f: f.random_int(min=0, max=18),
+        "capacity_risk_score": lambda f: round(f.random.uniform(10.0, 85.0), 2),
+        "hospital_load_index": lambda f: round(f.random.uniform(10.0, 85.0), 2),
+        "overload_risk_score": lambda f: round(f.random.uniform(5.0, 90.0), 2),
+    }
+
+    for field, generator in field_defaults.items():
+        values = []
+        for _, row in df.iterrows():
+            existing = row.get(field)
+            if pd.notna(existing):
+                values.append(existing)
+                continue
+            seed = get_deterministic_seed(str(row["timestamp"]) + field)
+            fake.seed_instance(seed)
+            values.append(generator(fake))
+        df[field] = values
+
+    if "capacity_category" not in df.columns:
+        df["capacity_category"] = np.where(df["overload_risk_score"] >= 65, "High", np.where(df["overload_risk_score"] >= 45, "Medium", "Low"))
+    if "alert_level" not in df.columns:
+        df["alert_level"] = np.where(df["overload_risk_score"] >= 75, "Critical", np.where(df["overload_risk_score"] >= 55, "Warning", "Normal"))
+
+    return df
+
+def parse_binary_target(value) -> int:
+    normalized = str(value).strip().lower()
+    if normalized in ("true", "1", "yes", "y"):
+        return 1
+    if normalized in ("false", "0", "no", "n"):
+        return 0
+    return int(float(value))
+
+def simulate_clinical_admission(row):
+    score = 0
+    if row["emergency_severity_level"] == 1:
+        score += 0.8
+    elif row["emergency_severity_level"] == 2:
+        score += 0.6
+    elif row["emergency_severity_level"] == 3:
+        score += 0.3
+
+    if row["age"] > 70:
+        score += 0.2
+    elif row["age"] < 10:
+        score += 0.1
+
+    if row["wait_time"] > 45:
+        score += 0.2
+
+    dept = str(row["department"]).lower()
+    if "icu" in dept or "card" in dept:
+        score += 0.4
+    elif "emerg" in dept:
+        score += 0.2
+    elif "self" in dept:
+        score -= 0.3
+
+    prob = 1 / (1 + np.exp(-score))
+    return 1 if prob >= 0.55 else 0
+
+def run_feature_engineering(raw_csv_path: str = None):
+    selected_path = raw_csv_path or RAW_CSV_PATH
+    if not os.path.exists(selected_path):
+        selected_path = FALLBACK_RAW_CSV_PATH
+
+    print(f"Loading raw dataset from {selected_path}...")
+    if not os.path.exists(selected_path):
+        print(f"Error: Raw CSV not found at {selected_path}.")
+        return None
+
+    df = pd.read_csv(selected_path)
+    df = normalize_schema(df)
+    df = add_missing_operational_fields(df)
+
+    df["gender"] = df["gender"].apply(lambda g: 1 if str(g).lower() in ("m", "male") else 0)
+    df["department_encoded"] = df["department"].apply(lambda d: encode_category(d, DEPARTMENTS))
+    df["arrival_mode_encoded"] = df["arrival_mode"].apply(lambda d: encode_category(d, ARRIVAL_MODES))
+    df["triage_level_encoded"] = df["triage_level"].apply(lambda d: encode_category(d, TRIAGE_LEVELS))
+
+    if "admitted" in df.columns:
+        df["admission_target"] = df["admitted"].apply(parse_binary_target)
+    else:
+        df["admission_target"] = df.apply(simulate_clinical_admission, axis=1)
+
     # Create target processed directory
     os.makedirs(PROCESSED_DIR, exist_ok=True)
     
@@ -153,12 +210,16 @@ def run_feature_engineering():
     
     # 5. Resample to hourly patient counts for Prophet
     print("Aggregating hourly counts for Prophet time series forecast...")
-    hourly_df = df.resample("H", on="parsed_timestamp").size().reset_index(name="y")
+    hourly_df = df.resample("h", on="parsed_timestamp").size().reset_index(name="y")
     hourly_df = hourly_df.rename(columns={"parsed_timestamp": "ds"})
     
     # Save processed forecasting dataset
     hourly_df.to_csv(PROCESSED_FORECAST_CSV, index=False)
     print(f"Prophet time series dataset saved to {PROCESSED_FORECAST_CSV} (Shape: {hourly_df.shape})")
+    return df
 
 if __name__ == "__main__":
-    run_feature_engineering()
+    parser = argparse.ArgumentParser(description="Preprocess MediFlow hospital operations data for model training.")
+    parser.add_argument("--input", default=None, help="Optional raw CSV path. Defaults to the generated MediFlow synthetic dataset.")
+    args = parser.parse_args()
+    run_feature_engineering(args.input)
