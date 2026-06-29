@@ -109,39 +109,105 @@ def run_feature_engineering():
     df["doctor_availability"] = doctors_list
     df["oxygen_utilization"] = oxygen_list
     
+def simulate_clinical_admission(row):
+    score = 0
+    if row["emergency_severity_level"] == 1:
+        score += 0.8
+    elif row["emergency_severity_level"] == 2:
+        score += 0.6
+    elif row["emergency_severity_level"] == 3:
+        score += 0.3
+        
+    if row["age"] > 70:
+        score += 0.2
+    elif row["age"] < 10:
+        score += 0.1
+        
+    if row["wait_time"] > 45:
+        score += 0.2
+        
+    dept = str(row["department"]).lower()
+    if "icu" in dept or "card" in dept:
+        score += 0.4
+    elif "emerg" in dept:
+        score += 0.2
+    elif "self" in dept:
+        score -= 0.3
+        
+    prob = 1 / (1 + np.exp(-score))
+    return 1 if prob >= 0.55 else 0
+
+def run_feature_engineering():
+    print(f"Loading raw dataset from {RAW_CSV_PATH}...")
+    if not os.path.exists(RAW_CSV_PATH):
+        print(f"Error: Raw CSV not found at {RAW_CSV_PATH}.")
+        return
+        
+    df = pd.read_csv(RAW_CSV_PATH)
+    
+    # 1. Map columns to match logical fields
+    df = df.rename(columns={
+        "Patient Id": "patient_id",
+        "Patient Admission Date": "timestamp",
+        "Patient Age": "age",
+        "Patient Gender": "gender",
+        "Patient Waittime": "wait_time",
+        "Department Referral": "department",
+        "Patient Admission Flag": "admitted",
+        "Patient Satisfaction Score": "satisfaction_score",
+        "Patient Race": "race"
+    })
+    
+    # Fill missing values
+    df["department"] = df["department"].fillna("Self-Referral")
+    df["satisfaction_score"] = df["satisfaction_score"].fillna(3.0)
+    
+    # Convert dates
+    df["parsed_timestamp"] = pd.to_datetime(df["timestamp"], format="%d-%m-%Y %H:%M")
+    df = df.sort_values(by="parsed_timestamp").reset_index(drop=True)
+    
+    # 2. Extract standard time features
+    df["hour"] = df["parsed_timestamp"].dt.hour
+    df["day_of_week"] = df["parsed_timestamp"].dt.dayofweek
+    df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
+    df["shift"] = df["hour"].apply(get_shift)
+    df["gender"] = df["gender"].apply(lambda g: 1 if str(g).lower() == "m" else 0)
+    
+    # 3. Derive emergency severity level (1-5)
+    df["emergency_severity_level"] = df.apply(
+        lambda r: derive_severity_level(r["wait_time"], r["department"]), 
+        axis=1
+    )
+    
+    # 4. Generate deterministic synthetic attributes
+    print("Generating simulated parameters (ICU capacity, ambulance calls, etc.)...")
+    fake = Faker()
+    
+    icu_beds_list = []
+    ambulance_list = []
+    doctors_list = []
+    oxygen_list = []
+    
+    for idx, row in df.iterrows():
+        seed = get_deterministic_seed(row["timestamp"])
+        fake.seed_instance(seed)
+        
+        icu_beds_list.append(fake.random_int(min=0, max=50))
+        ambulance_list.append(fake.random_int(min=0, max=10))
+        doctors_list.append(fake.random_int(min=5, max=30))
+        oxygen_list.append(round(fake.random.uniform(40.0, 100.0), 2))
+        
+    df["icu_beds_available"] = icu_beds_list
+    df["ambulance_requests"] = ambulance_list
+    df["doctor_availability"] = doctors_list
+    df["oxygen_utilization"] = oxygen_list
+    
     # Target label (binary) using Clinical Triage Rules:
     # A patient is likely to be admitted if:
     # - Emergency severity is very high (Level 1 or 2)
     # - Or wait time is long AND age is elderly (age > 70)
     # - Or department referral is ICU/Cardiology
-    def simulate_clinical_admission(row):
-        score = 0
-        if row["emergency_severity_level"] == 1:
-            score += 0.8
-        elif row["emergency_severity_level"] == 2:
-            score += 0.6
-        elif row["emergency_severity_level"] == 3:
-            score += 0.3
-            
-        if row["age"] > 70:
-            score += 0.2
-        elif row["age"] < 10:
-            score += 0.1
-            
-        if row["wait_time"] > 45:
-            score += 0.2
-            
-        dept = str(row["department"]).lower()
-        if "icu" in dept or "card" in dept:
-            score += 0.4
-        elif "emerg" in dept:
-            score += 0.2
-        elif "self" in dept:
-            score -= 0.3
-            
-        prob = 1 / (1 + np.exp(-score))
-        return 1 if prob >= 0.55 else 0
-
+    
     df["admission_target"] = df.apply(simulate_clinical_admission, axis=1)
     
     # Create target processed directory
