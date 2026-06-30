@@ -1,116 +1,306 @@
 import os
+import json
 import joblib
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 
-# Paths for models (Phase 2 targets)
+# Paths for models
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
-XGB_MODEL_PATH = os.path.join(MODEL_DIR, "model_xgb.pkl")
-PROPHET_MODEL_PATH = os.path.join(MODEL_DIR, "model_prophet.pkl")
 
-# Keep track of loaded models
+# Model mappings
+XGB_ADMISSION_PATH = os.path.join(MODEL_DIR, "model_xgb_admission.pkl")
+REG_MODEL_PATHS = {
+    "beds_required": os.path.join(MODEL_DIR, "model_xgb_beds.pkl"),
+    "icu_beds_required": os.path.join(MODEL_DIR, "model_xgb_icu.pkl"),
+    "doctors_required": os.path.join(MODEL_DIR, "model_xgb_staff_docs.pkl"),
+    "nurses_required": os.path.join(MODEL_DIR, "model_xgb_staff_nurses.pkl"),
+    "ventilators_required": os.path.join(MODEL_DIR, "model_xgb_ventilators.pkl"),
+    "oxygen_required": os.path.join(MODEL_DIR, "model_xgb_oxygen.pkl"),
+    "queue_required": os.path.join(MODEL_DIR, "model_xgb_queue.pkl"),
+    "ambulances_required": os.path.join(MODEL_DIR, "model_xgb_ambulances.pkl"),
+    "load_required": os.path.join(MODEL_DIR, "model_xgb_load.pkl"),
+    "pressure_required": os.path.join(MODEL_DIR, "model_xgb_pressure.pkl"),
+    "availability_required": os.path.join(MODEL_DIR, "model_xgb_availability.pkl")
+}
+
+PROPHET_ADMISSIONS_PATH = os.path.join(MODEL_DIR, "model_prophet_admissions.pkl")
+PROPHET_DISCHARGES_PATH = os.path.join(MODEL_DIR, "model_prophet_discharges.pkl")
+PROPHET_OXYGEN_PATH = os.path.join(MODEL_DIR, "model_prophet_oxygen.pkl")
+PROPHET_VENTILATORS_PATH = os.path.join(MODEL_DIR, "model_prophet_ventilators.pkl")
+
+# In-memory models and metadata cache
+models_cache = {}
+residual_errors = {}
+feature_names = {}
 _xgb_model = None
 _prophet_model = None
 
 def load_models():
-    """Dynamically load models if they exist."""
-    global _xgb_model, _prophet_model
+    """Loads all multi-horizon regressors, classifiers, residual metadata, and forecasters."""
+    global _xgb_model, _prophet_model, residual_errors, feature_names
     
-    if os.path.exists(XGB_MODEL_PATH) and _xgb_model is None:
+    # Load metadata
+    res_path = os.path.join(MODEL_DIR, "residual_errors.json")
+    if os.path.exists(res_path) and not residual_errors:
         try:
-            _xgb_model = joblib.load(XGB_MODEL_PATH)
-            print("Successfully loaded XGBoost model.")
+            with open(res_path, "r") as f:
+                residual_errors = json.load(f)
         except Exception as e:
-            print(f"Error loading XGBoost model: {e}")
-            
-    if os.path.exists(PROPHET_MODEL_PATH) and _prophet_model is None:
+            print(f"Error loading residual errors metadata: {e}")
+
+    feat_path = os.path.join(MODEL_DIR, "feature_names.json")
+    if os.path.exists(feat_path) and not feature_names:
         try:
-            _prophet_model = joblib.load(PROPHET_MODEL_PATH)
-            print("Successfully loaded Prophet model.")
+            with open(feat_path, "r") as f:
+                feature_names = json.load(f)
         except Exception as e:
-            print(f"Error loading Prophet model: {e}")
+            print(f"Error loading feature names: {e}")
+
+    # Load classifier
+    if os.path.exists(XGB_ADMISSION_PATH) and "xgb_admission" not in models_cache:
+        try:
+            models_cache["xgb_admission"] = joblib.load(XGB_ADMISSION_PATH)
+            _xgb_model = models_cache["xgb_admission"]
+        except Exception as e:
+            print(f"Failed to load XGB Admission model: {e}")
+
+    # Load regressors
+    for key, path in REG_MODEL_PATHS.items():
+        if os.path.exists(path) and key not in models_cache:
+            try:
+                models_cache[key] = joblib.load(path)
+            except Exception as e:
+                print(f"Failed to load regressor {key}: {e}")
+
+    # Load Prophet models
+    prophet_targets = {
+        "prophet_admissions": PROPHET_ADMISSIONS_PATH,
+        "prophet_discharges": PROPHET_DISCHARGES_PATH,
+        "prophet_oxygen": PROPHET_OXYGEN_PATH,
+        "prophet_ventilators": PROPHET_VENTILATORS_PATH
+    }
+    for key, path in prophet_targets.items():
+        if os.path.exists(path) and key not in models_cache:
+            try:
+                models_cache[key] = joblib.load(path)
+                if key == "prophet_admissions":
+                    _prophet_model = models_cache[key]
+            except Exception as e:
+                print(f"Failed to load Prophet {key}: {e}")
+
+def get_base_features_df(event: dict) -> pd.DataFrame:
+    """Extracts base encoded features from the raw event mapping."""
+    depts = ["Self-Referral", "Cardiology", "ICU", "Emergency", "Orthopedics", "Pediatrics", "Neurology"]
+    arrival_modes = ["Walk-in", "Referral", "Ambulance", "Transfer"]
+    triage_levels = ["Non-Urgent", "Semi-Urgent", "Urgent", "Critical"]
+    genders = ["Female", "Male"]
+
+    timestamp_str = event.get("timestamp", "")
+    try:
+        dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        try:
+            dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            try:
+                dt = datetime.strptime(timestamp_str, "%d-%m-%Y %H:%M")
+            except ValueError:
+                dt = datetime.now()
+
+    hour = dt.hour
+    day_of_week_encoded = dt.weekday()
+    is_weekend = 1 if day_of_week_encoded >= 5 else 0
+
+    gender_str = str(event.get("gender", "Female"))
+    gender_val = 1 if "m" in gender_str.lower() else 0
+
+    dept_str = str(event.get("department", "Self-Referral"))
+    dept_encoded = depts.index(dept_str) if dept_str in depts else 0
+
+    arrival_str = str(event.get("arrival_mode", "Walk-in"))
+    arrival_mode_encoded = arrival_modes.index(arrival_str) if arrival_str in arrival_modes else 0
+
+    triage_str = str(event.get("triage_level", "Urgent"))
+    triage_level_encoded = triage_levels.index(triage_str) if triage_str in triage_levels else 2
+
+    # Map wait time & severities
+    wait_time = float(event.get("wait_time", 30.0))
+    severity = float(event.get("emergency_severity_level", 3.0))
+
+    # Base dictionary
+    return pd.DataFrame([{
+        "patient_id": event.get("patient_id", "unknown"),
+        "timestamp": timestamp_str,
+        "parsed_timestamp": dt,
+        "age": float(event.get("age", 40.0)),
+        "gender_encoded": gender_val,
+        "dept_encoded": dept_encoded,
+        "arrival_mode_encoded": arrival_mode_encoded,
+        "triage_level_encoded": triage_level_encoded,
+        "wait_time": wait_time,
+        "emergency_severity_level": severity,
+        "icu_beds_available": float(event.get("icu_beds_available", 20.0)),
+        "general_beds_available": float(event.get("general_beds_available", 150.0)),
+        "doctor_availability": float(event.get("doctor_availability", 20.0)),
+        "nurse_availability": float(event.get("nurse_availability", 40.0)),
+        "ambulance_requests": float(event.get("ambulance_requests", 3.0)),
+        "oxygen_utilization": float(event.get("oxygen_utilization", 70.0)),
+        "ventilator_availability": float(event.get("ventilator_availability", 10.0)),
+        "capacity_risk_score": float(event.get("capacity_risk_score", 50.0)),
+        "hospital_load_index": float(event.get("hospital_load_index", 35.0)),
+        "overload_risk_score": float(event.get("overload_risk_score", 40.0)),
+        "hour": hour,
+        "day_of_week_encoded": day_of_week_encoded,
+        "is_weekend": is_weekend,
+        "admitted": 1 if event.get("admitted") else 0
+    }])
+
+async def extract_streaming_features(event: dict, db) -> pd.DataFrame:
+    """
+    Queries historical patient events from MongoDB, appends the current event,
+    and runs the full rolling window feature engineering function.
+    """
+    base_df = get_base_features_df(event)
+    parsed_time = base_df.iloc[0]["parsed_timestamp"]
+    
+    if db is None:
+        # Return base padded features if DB connection not present
+        return pad_rolling_features(base_df)
+
+    # Ingest historical events from the last 24 hours
+    one_day_ago = parsed_time - timedelta(hours=24)
+    cursor = db["events"].find({
+        "parsed_timestamp": {"$gte": one_day_ago, "$lt": parsed_time}
+    }).sort([("parsed_timestamp", 1)])
+    
+    hist_events = await cursor.to_list(length=100)
+    if not hist_events:
+        return pad_rolling_features(base_df)
+
+    # Format historical records into DataFrame
+    hist_rows = []
+    for e in hist_events:
+        hist_rows.append(get_base_features_df(e))
+        
+    hist_df = pd.concat(hist_rows, ignore_index=True)
+    combined_df = pd.concat([hist_df, base_df], ignore_index=True)
+    
+    # Import the rolling function from features script
+    from ml.feature_engineering_v2 import calculate_rolling_features
+    engineered_df = calculate_rolling_features(combined_df)
+    
+    # Return only the last row representing the current event with computed rolling features
+    return engineered_df.tail(1)
+
+def pad_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Pads rolling window features with default averages in case of cold start."""
+    df["general_beds_occupied"] = 300.0 - df["general_beds_available"]
+    df["icu_beds_occupied"] = 50.0 - df["icu_beds_available"]
+    df["doctors_occupied"] = 40.0 - df["doctor_availability"]
+    df["nurses_occupied"] = 80.0 - df["nurse_availability"]
+    df["ventilators_occupied"] = 25.0 - df["ventilator_availability"]
+    df["discharged"] = 0.0
+
+    rolling_cols = [
+        "rolling_adm_5m", "rolling_adm_15m", "rolling_adm_30m", "rolling_adm_1h", "rolling_adm_6h", "rolling_adm_24h",
+        "rolling_dis_5m", "rolling_dis_15m", "rolling_dis_30m", "rolling_dis_1h", "rolling_dis_6h", "rolling_dis_24h",
+        "velocity_1h", "velocity_6h", "velocity_24h", "accel_1h",
+        "icu_growth_1h", "icu_growth_6h",
+        "arrivals_count_5m", "arrivals_count_30m", "arrivals_count_1h", "arrivals_count_6h",
+        "bed_turnover_rate_1h", "bed_turnover_rate_6h",
+        "oxygen_trend_1h", "oxygen_trend_6h", "vent_trend_1h",
+        "doc_workload_trend_1h", "nurse_workload_trend_1h",
+        "patient_inflow_1h", "patient_outflow_1h",
+        "emergency_growth_rate_1h",
+        "avg_wait_time_1h", "avg_wait_time_6h",
+        "pressure_trend_1h",
+        "surge_probability",
+        "beds_occupied_lag_1", "beds_occupied_lag_2", "icu_occupied_lag_1", "icu_occupied_lag_2"
+    ]
+    for c in rolling_cols:
+        df[c] = 0.0
+        
+    df["beds_occupied_lag_1"] = df["general_beds_occupied"]
+    df["icu_occupied_lag_1"] = df["icu_beds_occupied"]
+    return df
+
+def generate_local_explanation(model, features_df, target_key: str) -> str:
+    """
+    Computes local feature importance explainability by identifying which of 
+    the top features contributed most to the current prediction.
+    """
+    if not hasattr(model, "feature_importances_"):
+        return "Nominal operation trend predicted."
+        
+    importances = model.feature_importances_
+    features = list(features_df.columns)
+    
+    # Sort features by gain/importance weight
+    feat_imp = sorted(zip(features, importances), key=lambda x: x[1], reverse=True)
+    top_feats = [f[0] for f in feat_imp if f[1] > 0.01][:3]
+    
+    if not top_feats:
+        return "Predictive trend based on baseline historical capacity levels."
+
+    # Format human readable descriptions
+    explanation_map = {
+        "general_beds_available": "available general beds",
+        "icu_beds_available": "ICU capacity levels",
+        "doctor_availability": "medical staff availability",
+        "nurse_availability": "nurse staffing levels",
+        "rolling_adm_1h": "recent admissions inflow",
+        "rolling_adm_6h": "6-hour admissions trend",
+        "rolling_adm_24h": "daily admission surge",
+        "surge_probability": "surge probability indicators",
+        "wait_time": "ER waiting times",
+        "velocity_1h": "occupancy velocity shifts",
+        "pressure_trend_1h": "hospital load pressure trends",
+        "beds_occupied_lag_1": "prior hour bed occupancy"
+    }
+
+    readable_feats = [explanation_map.get(f, f.replace("_", " ")) for f in top_feats]
+    
+    # Extract weights for output
+    w1 = int(feat_imp[0][1] * 100)
+    w2 = int(feat_imp[1][1] * 100) if len(feat_imp) > 1 else 0
+    
+    if len(readable_feats) == 1:
+        return f"Prediction primarily driven by {readable_feats[0]} (influence: {w1}%)."
+    else:
+        return f"Influenced by {readable_feats[0]} ({w1}%) and {readable_feats[1]} ({w2}%)."
 
 def predict_admission(event: dict) -> dict:
-    """
-    Predicts if a patient event will lead to admission.
-    Returns details to save in MongoDB.
-    """
+    """Predicts patient admission classification (v1.0 backward compatibility)."""
     load_models()
-    
-    # In Phase 4, the model files won't exist yet, so we return the stub values.
-    # In Phase 2, we will use the loaded model.
-    if _xgb_model is not None:
+    model = models_cache.get("xgb_admission")
+    if model is not None:
         try:
-            # Prepare feature vector from the event dictionary.
-            # (Note: Feature processing logic will be fully aligned in Phase 2)
-            # Map values
-            gender_val = 1 if str(event.get("gender", "")).lower() == "m" else 0
+            # For simplicity, extract base features
+            base_df = get_base_features_df(event)
+            padded = pad_rolling_features(base_df)
             
-            # Extract datetime features
-            dt = datetime.strptime(event.get("timestamp", ""), "%d-%m-%Y %H:%M")
-            hour = dt.hour
-            day_of_week = dt.weekday()
-            is_weekend = 1 if day_of_week >= 5 else 0
-            
-            # Simple numeric features mapping
-            age = float(event.get("age", 40))
-            wait_time = float(event.get("wait_time", 30))
-            severity = float(event.get("emergency_severity_level", 3))
-            icu_beds = float(event.get("icu_beds_available", 10))
-            ambulance = float(event.get("ambulance_requests", 2))
-            docs = float(event.get("doctor_availability", 15))
-            oxygen = float(event.get("oxygen_utilization", 70.0))
-            
-            # For category 'department', let's use a very basic encoding or mapping
-            # (Phase 2 feature_engineering will build the formal dictionary)
-            # Just define a list of common depts so features are aligned.
-            depts = ["Self-Referral", "Cardiology", "ICU", "Emergency", "Orthopedics", "Pediatrics"]
-            dept_encoded = depts.index(event.get("department", "Self-Referral")) if event.get("department") in depts else 0
-            
-            # Feature ordering must match training:
-            features = pd.DataFrame([{
-                "age": age,
-                "gender": gender_val,
-                "emergency_severity_level": severity,
-                "hour": hour,
-                "day_of_week": day_of_week,
-                "is_weekend": is_weekend,
-                "wait_time": wait_time,
-                "department": dept_encoded,
-                "icu_beds_available": icu_beds,
-                "ambulance_requests": ambulance,
-                "doctor_availability": docs,
-                "oxygen_utilization": oxygen
-            }])
-            
-            # Reorder columns to ensure exact match with training
-            feature_cols = [
-                "age", "gender", "emergency_severity_level", "hour", "day_of_week",
-                "is_weekend", "wait_time", "department", "icu_beds_available",
-                "ambulance_requests", "doctor_availability", "oxygen_utilization"
-            ]
-            features = features[feature_cols]
-            
-            # Predict
-            proba = float(_xgb_model.predict_proba(features)[0][1])
+            # Match training feature cols
+            cols = feature_names.get("classifier_features", list(padded.columns))
+            # Ensure columns are aligned
+            for c in cols:
+                if c not in padded.columns:
+                    padded[c] = 0.0
+            feats = padded[cols]
+
+            proba = float(model.predict_proba(feats)[0][1])
             pred_admitted = bool(proba >= 0.5)
-            
-            # Check overload (admissions/hour threshold)
-            # Overload status will also be calculated dynamically by rolling consumer count,
-            # but we return our local model status as well
             return {
-                "patient_id": event.get("patient_id"),
-                "timestamp": event.get("timestamp"),
+                "patient_id": event.get("patient_id", "unknown"),
+                "timestamp": event.get("timestamp", ""),
                 "predicted_admission": pred_admitted,
                 "admission_proba": proba,
-                "overload": proba > 0.8, # Mocking overload flag if proba is high
+                "overload": proba > 0.8,
                 "model_loaded": True
             }
         except Exception as e:
-            print(f"Error performing XGBoost inference: {e}")
-            # Fallback to stub on inference error
-    
-    # STUB / FALLBACK
+            print(f"Error in XGBoost Admission prediction: {e}")
+
     return {
         "patient_id": event.get("patient_id", "unknown"),
         "timestamp": event.get("timestamp", ""),
@@ -120,42 +310,124 @@ def predict_admission(event: dict) -> dict:
         "model_loaded": False
     }
 
-def forecast_beds(hours: int = 24) -> list:
+def predict_capacity_demands_v2(features_df) -> dict:
     """
-    Returns a forecasted list of predicted bed occupancy for the next `hours`.
+    Continuous Prediction Engine: Runs multi-horizon inferences (30m, 1h, 6h, 24h)
+    for all 11 regressor targets, generating explanations and confidence intervals.
     """
     load_models()
-    
+    horizons = {"30m": 30.0, "1h": 60.0, "6h": 360.0, "24h": 1440.0}
+    predictions_payload = {}
+
+    for key, model_path in REG_MODEL_PATHS.items():
+        model = models_cache.get(key)
+        std_err = residual_errors.get(key, 5.0) # default fallback std err
+        
+        predictions_payload[key] = {}
+        
+        for h_name, h_val in horizons.items():
+            if model is not None:
+                try:
+                    # Construct feature vector with the horizon
+                    feats = features_df.copy()
+                    feats["horizon_minutes"] = h_val
+                    
+                    # Align features
+                    cols = feature_names.get("regressor_features", list(feats.columns))
+                    for c in cols:
+                        if c not in feats.columns:
+                            feats[c] = 0.0
+                    input_vector = feats[cols]
+                    
+                    # Run prediction
+                    val = float(model.predict(input_vector)[0])
+                    # Post-process bounds
+                    if key in ["beds_required", "icu_beds_required", "doctors_required", "nurses_required", "ventilators_required", "queue_required", "ambulances_required"]:
+                        val = max(0.0, val)
+                        # Cap at physical limits
+                        if key == "beds_required": val = min(300.0, val)
+                        elif key == "icu_beds_required": val = min(50.0, val)
+                        elif key == "doctors_required": val = min(40.0, val)
+                        elif key == "nurses_required": val = min(80.0, val)
+                        elif key == "ventilators_required": val = min(25.0, val)
+                    elif key in ["load_required", "pressure_required", "availability_required", "oxygen_required"]:
+                        val = max(0.0, min(100.0, val))
+
+                    # Compute 95% Confidence Interval
+                    ci_lower = round(max(0.0, val - 1.96 * std_err), 1)
+                    ci_upper = round(val + 1.96 * std_err, 1)
+                    
+                    # Generate explanation
+                    explanation = generate_local_explanation(model, input_vector, key)
+
+                    predictions_payload[key][h_name] = {
+                        "value": round(val, 1),
+                        "ci": [ci_lower, ci_upper],
+                        "explanation": explanation
+                    }
+                except Exception as e:
+                    print(f"Error predicting {key} at horizon {h_name}: {e}")
+                    predictions_payload[key][h_name] = {
+                        "value": 0.0, "ci": [0.0, 0.0], "explanation": "Prediction error."
+                    }
+            else:
+                # Stub placeholder values
+                predictions_payload[key][h_name] = {
+                    "value": 0.0, "ci": [0.0, 0.0], "explanation": "Model weights offline."
+                }
+
+    # Add model metadata
+    predictions_payload["model_loaded"] = len(models_cache) > 2
+    return predictions_payload
+
+def forecast_beds(hours: int = 24) -> list:
+    """Predicts future trends for the next `hours` using Prophet forecasters (v1.0 backwards compatibility)."""
+    load_models()
     now = datetime.now()
+    future_dates = [now + timedelta(hours=i) for i in range(hours)]
+    future_df = pd.DataFrame({"ds": future_dates})
     
-    # If Prophet model is loaded, run real prediction
-    if _prophet_model is not None:
-        try:
-            # Create future DataFrame
-            future_dates = [now + timedelta(hours=i) for i in range(hours)]
-            future_df = pd.DataFrame({"ds": future_dates})
-            
-            forecast = _prophet_model.predict(future_df)
-            result = []
-            for _, row in forecast.iterrows():
-                result.append({
-                    "ts": row["ds"].strftime("%Y-%m-%d %H:00"),
-                    "predicted_occupancy": max(0, int(row["yhat"]))
-                })
-            return result
-        except Exception as e:
-            print(f"Error running Prophet forecast: {e}")
-            # Fallback to stub on error
-            
-    # STUB / FALLBACK: Generate an oscillating mock trend
     forecast_data = []
+    
+    p_adm = models_cache.get("prophet_admissions")
+    p_dis = models_cache.get("prophet_discharges")
+    p_oxy = models_cache.get("prophet_oxygen")
+    p_vnt = models_cache.get("prophet_ventilators")
+
+    if p_adm is not None and p_dis is not None:
+        try:
+            f_adm = p_adm.predict(future_df)
+            f_dis = p_dis.predict(future_df)
+            f_oxy = p_oxy.predict(future_df) if p_oxy is not None else None
+            
+            for i in range(hours):
+                adm_val = max(0, int(f_adm.iloc[i]["yhat"]))
+                dis_val = max(0, int(f_dis.iloc[i]["yhat"]))
+                oxy_val = max(0.0, float(f_oxy.iloc[i]["yhat"])) if f_oxy is not None else 65.0
+                
+                # Mock bed occupancy occupancy trend: initial occupancy (e.g. 180) + sum(adm) - sum(dis)
+                predicted_occupancy = max(0, min(300, 180 + adm_val - dis_val))
+                
+                forecast_data.append({
+                    "ts": future_dates[i].strftime("%Y-%m-%d %H:00"),
+                    "predicted_occupancy": predicted_occupancy,
+                    "admissions": adm_val,
+                    "discharges": dis_val,
+                    "oxygen": round(oxy_val, 1)
+                })
+            return forecast_data
+        except Exception as e:
+            print(f"Error running Prophet forecasting: {e}")
+
+    # Fallback oscillated trend
     for i in range(hours):
         future_ts = now + timedelta(hours=i)
-        # Mock sine wave for bed occupancy
-        import math
-        occupancy = int(25 + 10 * math.sin(i / 3.0) + (i % 5))
+        occupancy = int(180 + 20 * np.sin(i / 4.0) + (i % 6))
         forecast_data.append({
             "ts": future_ts.strftime("%Y-%m-%d %H:00"),
-            "predicted_occupancy": max(0, min(50, occupancy))
+            "predicted_occupancy": max(0, min(300, occupancy)),
+            "admissions": int(5 + 2 * np.sin(i / 3.0)),
+            "discharges": int(4 + 1.5 * np.cos(i / 3.0)),
+            "oxygen": round(70.0 + 5.0 * np.sin(i / 6.0), 1)
         })
     return forecast_data

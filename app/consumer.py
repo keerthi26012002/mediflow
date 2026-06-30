@@ -3,111 +3,294 @@ import json
 import asyncio
 import threading
 import time
-import math
 from datetime import datetime, timedelta
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
+import pandas as pd
+
 from app.db import (
     get_database,
-    COLLECTION_PATIENT_EVENTS,
+    get_redis,
+    COLLECTION_EVENTS,
+    COLLECTION_HOSPITAL_STATE,
+    COLLECTION_CAPACITY_METRICS,
     COLLECTION_PREDICTIONS,
-    COLLECTION_ICU_SNAPSHOTS,
-    COLLECTION_ALERTS
+    COLLECTION_ALERTS,
+    COLLECTION_RECOMMENDATIONS,
+    COLLECTION_AUDIT_LOGS
 )
-from app.ml.inference import predict_admission
+from app.ml.capacity_intelligence import calculate_capacity_metrics
+from app.ml.inference import extract_streaming_features, predict_capacity_demands_v2, forecast_beds
+from app.ml.alert_engine import check_alerts_and_recommendations
 from app.websocket_manager import manager
 
 # Environment Variables
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
-TOPIC_PATIENT_FLOW = os.getenv("TOPIC_PATIENT_FLOW", "patient-flow")
-TOPIC_ICU_STATUS = os.getenv("TOPIC_ICU_STATUS", "icu-status")
-OVERLOAD_THRESHOLD = int(os.getenv("OVERLOAD_THRESHOLD", "15"))
 
-async def handle_patient_flow(event: dict):
-    """Processes patient flow event, runs inference, saves to DB, and checks overload alerts."""
+# Constants
+TOTAL_GENERAL_BEDS = 300
+TOTAL_ICU_BEDS = 50
+TOTAL_DOCTORS = 40
+TOTAL_NURSES = 80
+TOTAL_VENTILATORS = 25
+
+# Thread-safe in-memory Digital Twin state (Authoritative Operational State)
+_digital_twin_state = {
+    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "general_beds_occupied": 120,
+    "general_beds_available": 180,
+    "icu_beds_occupied": 15,
+    "icu_beds_available": 35,
+    "doctors_available": 25,
+    "doctors_on_shift": TOTAL_DOCTORS,
+    "nurses_available": 55,
+    "nurses_on_shift": TOTAL_NURSES,
+    "patients_waiting": 5,
+    "ambulances_active": 2,
+    "oxygen_utilization": 65.0,
+    "oxygen_remaining": 35.0,
+    "ventilators_available": 18,
+    "ventilators_occupied": 7,
+    "current_admissions": 10,
+    "current_discharges": 8,
+    "current_transfers": 2
+}
+_state_lock = threading.Lock()
+
+# Lazy-loaded Kafka Producer to publish predictions and alerts
+_kafka_producer = None
+_producer_lock = threading.Lock()
+
+def get_kafka_producer():
+    global _kafka_producer
+    if _kafka_producer is None:
+        with _producer_lock:
+            if _kafka_producer is None:
+                try:
+                    _kafka_producer = KafkaProducer(
+                        bootstrap_servers=KAFKA_BOOTSTRAP,
+                        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+                        acks="all",
+                        retries=3
+                    )
+                    print("Connected consumer-producer to Kafka.")
+                except Exception as e:
+                    # Fail silently to allow offline/mock mode
+                    _kafka_producer = False
+    return _kafka_producer if _kafka_producer else None
+
+async def process_stream_update(event_source: str, data: dict):
+    """
+    Core processor:
+    1. Ingests Kafka events and updates the single source of truth Digital Twin.
+    2. Persists updated Digital Twin state to MongoDB & Redis.
+    3. Calculates rolling window streaming features.
+    4. Runs Capacity Intelligence algorithms.
+    5. Computes multi-horizon predictive demand.
+    6. Triggers Rule + AI alerts and recommendations.
+    7. Publishes outputs back to Kafka and broadcasts to dashboard WebSockets.
+    """
     try:
         db = get_database()
+        redis = get_redis()
         
         # Parse timestamp
+        timestamp_str = data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         try:
-            event_time = datetime.strptime(event["timestamp"], "%d-%m-%Y %H:%M")
-        except (ValueError, KeyError):
-            event_time = datetime.now()
-            event["timestamp"] = event_time.strftime("%d-%m-%Y %H:%M")
+            parsed_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f")
+        except ValueError:
+            try:
+                parsed_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                try:
+                    parsed_time = datetime.strptime(timestamp_str, "%d-%m-%Y %H:%M")
+                except ValueError:
+                    parsed_time = datetime.now()
+                    timestamp_str = parsed_time.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 1. Update Authoritative Digital Twin State based on event source/topic
+        global _digital_twin_state
+        with _state_lock:
+            _digital_twin_state["timestamp"] = timestamp_str
             
-        event["parsed_timestamp"] = event_time
-        
-        # 1. Insert patient event
-        # Strip MongoDB _id if present from previous operations
-        event.pop("_id", None)
-        await db[COLLECTION_PATIENT_EVENTS].insert_one(event.copy())
-        
-        # 2. Get prediction (stub in Phase 4, real in Phase 2)
-        prediction = predict_admission(event)
-        prediction["parsed_timestamp"] = event_time
-        prediction.pop("_id", None)
-        await db[COLLECTION_PREDICTIONS].insert_one(prediction.copy())
-        
-        # 3. Calculate rolling count of admitted patients in last hour
-        one_hour_ago = event_time - timedelta(hours=1)
-        admissions_count = await db[COLLECTION_PATIENT_EVENTS].count_documents({
-            "admitted": True,
-            "parsed_timestamp": {
-                "$gte": one_hour_ago,
-                "$lte": event_time
-            }
-        })
-        
-        print(f"Processed event for {event.get('patient_id')}. Admissions in last hour: {admissions_count}/{OVERLOAD_THRESHOLD}")
-        
-        # 4. Trigger Alert if overload threshold is breached
-        if admissions_count > OVERLOAD_THRESHOLD:
-            alert = {
-                "timestamp": event["timestamp"],
-                "message": f"Overload alert: {admissions_count} patient admissions in the last hour (threshold: {OVERLOAD_THRESHOLD})",
-                "admissions_count": admissions_count,
-                "threshold": OVERLOAD_THRESHOLD,
-                "severity": "CRITICAL" if admissions_count > OVERLOAD_THRESHOLD * 1.5 else "WARNING",
-                "parsed_timestamp": event_time
-            }
-            await db[COLLECTION_ALERTS].insert_one(alert.copy())
+            # Map values depending on event type
+            if "emergency" in event_source.lower() or "patient_id" in data:
+                # Patient Emergency Arrival
+                _digital_twin_state["patients_waiting"] += 1
+                if data.get("arrival_mode") == "Ambulance":
+                    _digital_twin_state["ambulances_active"] += 1
+                
+                # Copy values if present
+                for key in ["general_beds_available", "icu_beds_available", "doctor_availability", "nurse_availability", "oxygen_utilization", "ventilator_availability"]:
+                    if key in data:
+                        if key == "doctor_availability":
+                            _digital_twin_state["doctors_available"] = int(data[key])
+                        elif key == "nurse_availability":
+                            _digital_twin_state["nurses_available"] = int(data[key])
+                        elif key == "ventilator_availability":
+                            _digital_twin_state["ventilators_available"] = int(data[key])
+                        else:
+                            _digital_twin_state[key] = data[key]
             
-            # Prepare for JSON socket serialization
-            alert.pop("parsed_timestamp", None)
-            alert.pop("_id", None)
-            await manager.broadcast(alert)
-            print(f"Broadcasted live alert: {alert['message']}")
+            elif "admission" in event_source.lower():
+                _digital_twin_state["patients_waiting"] = max(0, _digital_twin_state["patients_waiting"] - 1)
+                _digital_twin_state["general_beds_available"] = max(0, _digital_twin_state["general_beds_available"] - 1)
+                _digital_twin_state["general_beds_occupied"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_occupied"] + 1)
+                _digital_twin_state["current_admissions"] += 1
+                
+            elif "discharge" in event_source.lower():
+                _digital_twin_state["general_beds_available"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_available"] + 1)
+                _digital_twin_state["general_beds_occupied"] = max(0, _digital_twin_state["general_beds_occupied"] - 1)
+                _digital_twin_state["current_discharges"] += 1
+                
+            elif "transfer" in event_source.lower():
+                if data.get("to_department") == "ICU":
+                    _digital_twin_state["general_beds_available"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_available"] + 1)
+                    _digital_twin_state["general_beds_occupied"] = max(0, _digital_twin_state["general_beds_occupied"] - 1)
+                    _digital_twin_state["icu_beds_available"] = max(0, _digital_twin_state["icu_beds_available"] - 1)
+                    _digital_twin_state["icu_beds_occupied"] = min(TOTAL_ICU_BEDS, _digital_twin_state["icu_beds_occupied"] + 1)
+                _digital_twin_state["current_transfers"] += 1
+                
+            elif "beds" in event_source.lower():
+                _digital_twin_state["general_beds_available"] = int(data["general_beds_available"])
+                _digital_twin_state["icu_beds_available"] = int(data["icu_beds_available"])
+                _digital_twin_state["general_beds_occupied"] = max(0, TOTAL_GENERAL_BEDS - int(data["general_beds_available"]))
+                _digital_twin_state["icu_beds_occupied"] = max(0, TOTAL_ICU_BEDS - int(data["icu_beds_available"]))
+                
+            elif "staff" in event_source.lower():
+                _digital_twin_state["doctors_available"] = int(data.get("doctor_availability", _digital_twin_state["doctors_available"]))
+                _digital_twin_state["nurses_available"] = int(data.get("nurse_availability", _digital_twin_state["nurses_available"]))
+                
+            elif "oxygen" in event_source.lower():
+                _digital_twin_state["oxygen_utilization"] = float(data["oxygen_utilization"])
+                
+            elif "ventilator" in event_source.lower():
+                _digital_twin_state["ventilators_available"] = int(data["ventilator_availability"])
+                _digital_twin_state["ventilators_occupied"] = max(0, TOTAL_VENTILATORS - int(data["ventilator_availability"]))
+
+            # Enforce limits & secondary calculations
+            _digital_twin_state["general_beds_occupied"] = TOTAL_GENERAL_BEDS - _digital_twin_state["general_beds_available"]
+            _digital_twin_state["icu_beds_occupied"] = TOTAL_ICU_BEDS - _digital_twin_state["icu_beds_available"]
+            _digital_twin_state["oxygen_remaining"] = round(100.0 - _digital_twin_state["oxygen_utilization"], 2)
+            _digital_twin_state["ventilators_occupied"] = TOTAL_VENTILATORS - _digital_twin_state["ventilators_available"]
+
+            state_copy = _digital_twin_state.copy()
+
+        # Add parsed time for MongoDB query filters
+        state_copy["parsed_timestamp"] = parsed_time
+
+        # Save event log to MongoDB events collection
+        event_entry = data.copy()
+        event_entry["parsed_timestamp"] = parsed_time
+        event_entry["timestamp"] = timestamp_str
+        await db[COLLECTION_EVENTS].insert_one(event_entry)
+
+        # 2. Persist updated Digital Twin state to MongoDB & Cache in Redis
+        await db[COLLECTION_HOSPITAL_STATE].replace_one(
+            {"_id": "current_state"}, 
+            state_copy, 
+            upsert=True
+        )
+        redis.set("hospital_state:live", json.dumps(_digital_twin_state))
+
+        # 3. Retrieve historical events to calculate rolling features & metrics
+        one_hour_ago = parsed_time - timedelta(hours=1)
+        recent_cursor = db[COLLECTION_EVENTS].find({
+            "parsed_timestamp": {"$gte": one_hour_ago, "$lte": parsed_time}
+        }).sort([("parsed_timestamp", -1)]).limit(100)
+        recent_events = await recent_cursor.to_list(length=100)
+
+        # Update hourly metrics on Digital Twin
+        admissions_count = sum(1 for e in recent_events if e.get("admitted") is True)
+        discharges_count = sum(1 for e in recent_events if "discharge" in str(e.get("action", "")).lower())
+        state_copy["current_admissions"] = admissions_count
+        state_copy["current_discharges"] = discharges_count
+
+        # 4. Calculate Capacity Intelligence Metrics
+        metrics = calculate_capacity_metrics(state_copy, recent_events)
+        metrics["parsed_timestamp"] = parsed_time
+        await db[COLLECTION_CAPACITY_METRICS].replace_one(
+            {"_id": "current_metrics"}, 
+            metrics, 
+            upsert=True
+        )
+        redis.set("capacity_metrics:live", json.dumps(metrics, default=str))
+
+        # 5. Extract Streaming Features & Run Predictions
+        # Map values back into data to ensure features calculation gets the updated state
+        data_for_features = data.copy()
+        data_for_features.update(_digital_twin_state)
+        data_for_features["timestamp"] = timestamp_str
+
+        features_df = await extract_streaming_features(data_for_features, db)
+        
+        # Run 11 regressors across 4 horizons
+        predictions = predict_capacity_demands_v2(features_df)
+        predictions["timestamp"] = timestamp_str
+        predictions["parsed_timestamp"] = parsed_time
+        
+        # Run Prophet Forecaster curves
+        forecast_points = forecast_beds(24)
+        predictions["forecast_24h"] = forecast_points
+
+        # Save predictions to MongoDB & Redis
+        await db[COLLECTION_PREDICTIONS].replace_one(
+            {"_id": "current_predictions"}, 
+            predictions, 
+            upsert=True
+        )
+        redis.set("predictions:live", json.dumps(predictions, default=str))
+
+        # Update Prometheus Metrics
+        from app.ml.monitoring import update_prometheus_metrics
+        update_prometheus_metrics(metrics, predictions)
+
+        # 6. Evaluate alerts & recommendations
+        alerts_recs = check_alerts_and_recommendations(state_copy, metrics, predictions)
+
+        # Save active alerts
+        if alerts_recs["alerts"]:
+            for alert in alerts_recs["alerts"]:
+                alert["parsed_timestamp"] = parsed_time
+                await db[COLLECTION_ALERTS].insert_one(alert)
+
+        # Save recommendations
+        if alerts_recs["recommendations"]:
+            for rec in alerts_recs["recommendations"]:
+                rec["parsed_timestamp"] = parsed_time
+                await db[COLLECTION_RECOMMENDATIONS].insert_one(rec)
+
+        # 7. Publish to Kafka back-channels
+        producer = get_kafka_producer()
+        if producer is not None:
+            # Publish predictions
+            pred_msg = {"timestamp": timestamp_str, "predictions": {k: v for k, v in predictions.items() if k != "parsed_timestamp"}}
+            producer.send("hospital.predictions", value=pred_msg)
+            # Publish alerts
+            for alert in alerts_recs["alerts"]:
+                producer.send("hospital.alerts", value=alert)
+            producer.flush()
+
+        # 8. Push live updates to dashboard clients via WebSockets
+        broadcast_payload = {
+            "timestamp": timestamp_str,
+            "digital_twin": _digital_twin_state,
+            "capacity_metrics": {k: v for k, v in metrics.items() if k != "parsed_timestamp"},
+            "predictions": {k: v for k, v in predictions.items() if k != "parsed_timestamp"},
+            "alerts": alerts_recs["alerts"],
+            "recommendations": alerts_recs["recommendations"]
+        }
+        await manager.broadcast(broadcast_payload)
 
     except Exception as e:
-        print(f"Error handling patient event: {e}")
-
-async def handle_icu_snapshot(snapshot: dict):
-    """Processes and logs ICU snapshots."""
-    try:
-        db = get_database()
-        
-        try:
-            event_time = datetime.strptime(snapshot["timestamp"], "%d-%m-%Y %H:%M")
-        except (ValueError, KeyError):
-            event_time = datetime.now()
-            snapshot["timestamp"] = event_time.strftime("%d-%m-%Y %H:%M")
-            
-        snapshot["parsed_timestamp"] = event_time
-        snapshot.pop("_id", None)
-        await db[COLLECTION_ICU_SNAPSHOTS].insert_one(snapshot)
-        print(f"Processed ICU snapshot: Beds available={snapshot.get('icu_beds_available')}")
-    except Exception as e:
-        print(f"Error handling ICU snapshot: {e}")
+        print(f"Error processing stream update: {e}")
 
 def run_mock_ingestion_sync(loop: asyncio.AbstractEventLoop):
-    """Fallback generator running inside consumer thread when Kafka is not available.
-    It reads the CSV directly, applies feature engineering logic and generates events,
-    inserting them directly into MongoDB to simulate the streaming pipeline."""
-    import hashlib
-    import pandas as pd
-    from faker import Faker
-    
-    CSV_PATH = "datasets/Hospital ER_Data.csv"
+    """
+    Simulates Kafka stream by reading the synthetic CSV dataset row-by-row
+    and pushing it directly into the process_stream_update loop.
+    """
+    CSV_PATH = "datasets/MediFlow_AI_Synthetic_Dataset (1).csv"
     if not os.path.exists(CSV_PATH):
         print(f"[Mock Consumer] Error: Dataset CSV not found at {CSV_PATH}. Mock streaming aborted.")
         return
@@ -118,165 +301,83 @@ def run_mock_ingestion_sync(loop: asyncio.AbstractEventLoop):
     except Exception as e:
         print(f"[Mock Consumer] Error reading CSV: {e}")
         return
-        
-    # Standardize schema
-    df = df.rename(columns={
-        "Patient Id": "patient_id",
-        "Patient Admission Date": "timestamp",
-        "Patient Age": "age",
-        "Patient Gender": "gender",
-        "Patient Waittime": "wait_time",
-        "Department Referral": "department",
-        "Patient Admission Flag": "admitted",
-        "Patient Satisfaction Score": "satisfaction_score",
-        "Patient Race": "race"
-    })
-    df["department"] = df["department"].fillna("Self-Referral")
-    df["satisfaction_score"] = df["satisfaction_score"].fillna(3.0)
-    
+
     # Sort chronologically
-    df["parsed_time"] = pd.to_datetime(df["timestamp"], format="%d-%m-%Y %H:%M")
+    df["parsed_time"] = pd.to_datetime(df["timestamp"])
     df = df.sort_values(by="parsed_time").reset_index(drop=True)
-    
-    fake = Faker()
-    
-    def get_deterministic_seed(timestamp_str: str) -> int:
-        return int(hashlib.md5(timestamp_str.encode("utf-8")).hexdigest(), 16) % 100000000
 
-    def derive_severity_level(wait_time: int, department: str) -> int:
-        dept = str(department).lower()
-        if "card" in dept or "icu" in dept or "emerg" in dept:
-            base = 1
-        elif "ortho" in dept or "ped" in dept:
-            base = 3
-        else:
-            base = 4
-        if wait_time < 15:
-            severity = base
-        elif wait_time < 30:
-            severity = min(5, base + 1)
-        elif wait_time < 60:
-            severity = min(5, base + 2)
-        else:
-            severity = min(5, base + 3)
-        return max(1, min(5, severity))
-
-    print("[Mock Consumer] Starting mock streaming loop. Press Ctrl+C in server to stop.")
-    last_icu_time = 0
-    
-    # Loop infinitely to keep the simulation alive
+    print("[Mock Consumer] Starting mock streaming loop.")
     while True:
         for idx, row in df.iterrows():
-            ts_str = row["timestamp"]
-            seed = get_deterministic_seed(ts_str)
-            fake.seed_instance(seed)
-            
-            # Generate seeded simulated fields
-            icu_beds_available = fake.random_int(min=0, max=50)
-            ambulance_requests = fake.random_int(min=0, max=10)
-            doctor_availability = fake.random_int(min=5, max=30)
-            oxygen_utilization = round(fake.random.uniform(40.0, 100.0), 2)
-            severity_level = derive_severity_level(row["wait_time"], row["department"])
-            
-            # Calculate admitted using the identical Clinical Triage Rules
-            score = 0
-            if severity_level == 1:
-                score += 0.8
-            elif severity_level == 2:
-                score += 0.6
-            elif severity_level == 3:
-                score += 0.3
-                
-            if int(row["age"]) > 70:
-                score += 0.2
-            elif int(row["age"]) < 10:
-                score += 0.1
-                
-            if int(row["wait_time"]) > 45:
-                score += 0.2
-                
-            dept = str(row["department"]).lower()
-            if "icu" in dept or "card" in dept:
-                score += 0.4
-            elif "emerg" in dept:
-                score += 0.2
-            elif "self" in dept:
-                score -= 0.3
-                
-            prob = 1 / (1 + math.exp(-score))
-            admitted_flag = bool(prob >= 0.55)
-
             event = {
-                "patient_id": row["patient_id"],
-                "timestamp": ts_str,
+                "patient_id": str(row["patient_id"]),
+                "timestamp": str(row["timestamp"]),
                 "age": int(row["age"]),
-                "gender": row["gender"],
+                "gender": str(row["gender"]),
+                "arrival_mode": str(row["arrival_mode"]),
+                "triage_level": str(row["triage_level"]),
                 "wait_time": int(row["wait_time"]),
-                "department": row["department"],
-                "admitted": admitted_flag,
-                "satisfaction_score": float(row["satisfaction_score"]),
-                "race": row["race"],
-                "icu_beds_available": icu_beds_available,
-                "ambulance_requests": ambulance_requests,
-                "doctor_availability": doctor_availability,
-                "oxygen_utilization": oxygen_utilization,
-                "emergency_severity_level": severity_level
+                "emergency_severity_level": int(row["emergency_severity_level"]),
+                "department": str(row["department"]),
+                "admitted": bool(row["admitted"]),
+                "icu_beds_available": int(row["icu_beds_available"]),
+                "general_beds_available": int(row["general_beds_available"]),
+                "doctor_availability": int(row["doctor_availability"]),
+                "nurse_availability": int(row["nurse_availability"]),
+                "ambulance_requests": int(row["ambulance_requests"]),
+                "oxygen_utilization": float(row["oxygen_utilization"]),
+                "ventilator_availability": int(row["ventilator_availability"])
             }
             
-            # Dispatch to async handler
-            asyncio.run_coroutine_threadsafe(handle_patient_flow(event), loop)
-            
-            # Dispatch ICU status every 30 iterations
-            current_time = time.time()
-            if (current_time - last_icu_time) >= 30:
-                icu_event = {
-                    "timestamp": ts_str,
-                    "icu_beds_available": icu_beds_available,
-                    "oxygen_utilization": oxygen_utilization,
-                    "doctor_availability": doctor_availability,
-                    "ambulance_requests": ambulance_requests
-                }
-                asyncio.run_coroutine_threadsafe(handle_icu_snapshot(icu_event), loop)
-                last_icu_time = current_time
-                
+            asyncio.run_coroutine_threadsafe(process_stream_update("MOCK", event), loop)
             time.sleep(1)
 
 def run_consumer_thread(loop: asyncio.AbstractEventLoop):
-    """Sync loop function running inside a background thread."""
+    """Subscribes to all 9 operational topics or switches to mock ingestion fallback."""
+    v2_topics = [
+        "hospital.patient.admission",
+        "hospital.patient.discharge",
+        "hospital.patient.transfer",
+        "hospital.patient.emergency",
+        "hospital.resource.beds",
+        "hospital.resource.icu",
+        "hospital.resource.staff",
+        "hospital.resource.oxygen",
+        "hospital.resource.ventilator"
+    ]
+    
     while True:
-        print(f"Connecting background consumer to Kafka on {KAFKA_BOOTSTRAP}...")
+        print(f"Connecting consumer to Kafka on {KAFKA_BOOTSTRAP}...")
         try:
             consumer = KafkaConsumer(
-                TOPIC_PATIENT_FLOW,
-                TOPIC_ICU_STATUS,
+                *v2_topics,
                 bootstrap_servers=KAFKA_BOOTSTRAP,
                 auto_offset_reset="latest",
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-                group_id="mediflow-backend-group",
-                consumer_timeout_ms=5000  # Non-blocking timeout so loop stays alive
+                group_id="mediflow-v2-backend-group",
+                consumer_timeout_ms=3000
             )
-            print("Connected background consumer to Kafka.")
+            print("Connected consumer to Kafka topics.")
             
             while True:
                 try:
-                    # Fetch batch of messages
                     message_batch = consumer.poll(timeout_ms=1000)
                     for partition, messages in message_batch.items():
                         for msg in messages:
-                            if msg.topic == TOPIC_PATIENT_FLOW:
-                                asyncio.run_coroutine_threadsafe(handle_patient_flow(msg.value), loop)
-                            elif msg.topic == TOPIC_ICU_STATUS:
-                                asyncio.run_coroutine_threadsafe(handle_icu_snapshot(msg.value), loop)
+                            asyncio.run_coroutine_threadsafe(
+                                process_stream_update(msg.topic, msg.value), 
+                                loop
+                            )
                 except Exception as e:
-                    print(f"Error in Kafka consumer poll iteration: {e}")
-                    break  # Break out to trigger reconnect
-                
+                    print(f"Error in Kafka consumer iteration: {e}")
+                    break
+                    
         except NoBrokersAvailable:
-            print("Kafka brokers not available. Running in MOCK INGESTION mode (generating synthetic entries directly)...")
+            print("Kafka brokers not available. Switching to MOCK INGESTION mode...")
             run_mock_ingestion_sync(loop)
             break
         except Exception as e:
-            print(f"Error starting Kafka consumer thread: {e}. Retrying in 10 seconds...")
+            print(f"Error starting consumer thread: {e}. Retrying in 10s...")
             time.sleep(10)
 
 def start_background_consumer():
@@ -284,4 +385,4 @@ def start_background_consumer():
     loop = asyncio.get_running_loop()
     t = threading.Thread(target=run_consumer_thread, args=(loop,), daemon=True)
     t.start()
-    print("Background consumer thread spawned.")
+    print("V2.1 Background consumer thread spawned.")
