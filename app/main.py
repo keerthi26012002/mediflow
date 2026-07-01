@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from app.db import init_db, close_db
 from app.consumer import start_background_consumer
 from app.websocket_manager import manager
-from app.routers import dashboard, predictions, forecast
+from app.routers import dashboard, predictions, forecast, v2_api
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MediFlow AI — Hospital Bed & Emergency Prediction System",
     description="Real-Time Hospital Bed Forecasting, Admission Prediction, and Operational Alert Ingestion.",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -38,6 +38,8 @@ app.add_middleware(
 app.include_router(dashboard.router)
 app.include_router(predictions.router)
 app.include_router(forecast.router)
+app.include_router(v2_api.router)
+
 
 # WebSocket connection for live alerts
 @app.websocket("/ws/alerts")
@@ -53,6 +55,17 @@ async def websocket_alerts(websocket: WebSocket):
     except Exception as e:
         print(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+
+# Prometheus metrics endpoint
+@app.get("/metrics")
+def metrics():
+    try:
+        from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+        from fastapi import Response
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    except ImportError:
+        from fastapi import Response
+        return Response(content="# prometheus_client not installed", media_type="text/plain")
 
 # Health endpoint
 @app.get("/health", tags=["health"])

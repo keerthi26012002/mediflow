@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MediFlow AI — Hospital Bed & Emergency Prediction Dashboard</title>
+  <title>MediFlow AI v2.0 — Capacity Intelligence Dashboard</title>
   <link rel="stylesheet" href="style.css">
   <!-- Chart.js CDN for live forecast visualization -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -14,11 +14,14 @@
   <header>
     <div class="brand">
       <div class="logo-glow">M</div>
-      <h1>MediFlow AI Operations Control</h1>
+      <div>
+        <h1>MediFlow AI Operations Control</h1>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Real-Time Hospital Capacity Intelligence & Continuous Prediction Platform (v2.0)</div>
+      </div>
     </div>
     <div class="system-time">
-      <span class="pulse-dot"></span>
-      <span id="connection-status">Live Replay Connection</span>
+      <span class="pulse-dot" id="pulse-dot"></span>
+      <span id="connection-status">Live Ingestion Online</span>
       <span style="margin: 0 0.5rem; opacity: 0.2;">|</span>
       <span id="current-sim-time">Initializing...</span>
     </div>
@@ -27,117 +30,243 @@
   <!-- Main Dashboard Grid -->
   <main class="dashboard-grid">
 
-    <!-- Top Metrics Strip -->
+    <!-- Top Readiness KPI Ribbon -->
     <section class="metrics-strip">
-      
-      <!-- Card 1: Patient Admission Rate -->
-      <div class="glass-card metric-card card-blue" id="metric-admissions">
+      <!-- KPI 1: Readiness Score -->
+      <div class="glass-card metric-card card-cyan" id="metric-readiness">
         <div class="metric-info">
-          <h3>Patients / Hour</h3>
-          <div class="metric-value" id="val-patients-hr">0</div>
-          <div class="metric-trend" id="trend-patients-hr">Inflow over last 60m</div>
+          <h3>Hospital Readiness Score</h3>
+          <div class="metric-value" id="val-readiness">100%</div>
+          <div class="metric-trend" id="trend-readiness">Resource response index</div>
         </div>
-        <div class="metric-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-        </div>
+        <div class="metric-icon">🛡️</div>
       </div>
 
-      <!-- Card 2: Free ICU Beds -->
-      <div class="glass-card metric-card card-cyan" id="metric-icu">
+      <!-- KPI 2: Hospital Load Index -->
+      <div class="glass-card metric-card card-blue" id="metric-load">
         <div class="metric-info">
-          <h3>ICU Beds Free</h3>
-          <div class="metric-value" id="val-icu-beds">0</div>
-          <div class="metric-trend" id="trend-icu-beds">Latest active capacity</div>
+          <h3>Hospital Load Index</h3>
+          <div class="metric-value" id="val-load-index">0.0</div>
+          <div class="metric-trend" id="trend-load-index">Combined load score</div>
         </div>
-        <div class="metric-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16M2 8h18M2 12h18M2 16h18M22 4v16M10 8V4M14 8V4"/></svg>
-        </div>
+        <div class="metric-icon">📊</div>
       </div>
 
-      <!-- Card 3: Avg Wait Time -->
-      <div class="glass-card metric-card card-yellow" id="metric-wait">
+      <!-- KPI 3: Capacity Score -->
+      <div class="glass-card metric-card card-yellow" id="metric-capacity">
         <div class="metric-info">
-          <h3>Avg Wait Time</h3>
-          <div class="metric-value" id="val-wait-time">0<span style="font-size: 1rem; font-weight: 500; margin-left: 2px;">m</span></div>
-          <div class="metric-trend" id="trend-wait-time">Rolling emergency average</div>
+          <h3>Capacity Score</h3>
+          <div class="metric-value" id="val-capacity-score">100.0</div>
+          <div class="metric-trend" id="trend-capacity">Available capacity score</div>
         </div>
-        <div class="metric-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-        </div>
+        <div class="metric-icon">🔋</div>
       </div>
 
-      <!-- Card 4: Overload Alerts Status -->
+      <!-- KPI 4: Occupancy Score -->
       <div class="glass-card metric-card card-status" id="metric-status">
         <div class="metric-info">
           <h3>System Status</h3>
           <div class="metric-value" id="val-system-status">NOMINAL</div>
-          <div class="metric-trend" id="trend-system-status">No active warnings</div>
+          <div class="metric-trend" id="val-bottleneck">No bottlenecks detected</div>
         </div>
-        <div class="metric-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-        </div>
+        <div class="metric-icon">⚙️</div>
       </div>
-
     </section>
 
-    <!-- Main Content: Middle Panel Split -->
+    <!-- Mid Section: Digital Twin + ML Predictions Split -->
     <section class="main-content">
       
-      <!-- Bed Occupancy Forecast Chart -->
-      <div class="glass-card" id="chart-panel">
+      <!-- Digital Twin live model -->
+      <div class="glass-card" id="twin-panel">
         <div class="card-header">
-          <h2>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-            24-Hour Bed Occupancy Predictive Forecast
-          </h2>
-          <span style="font-size: 0.8rem; color: var(--text-muted);" id="forecast-model-badge">Model: Stubbed</span>
+          <h2>🏥 Live Digital Twin Status</h2>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Real-Time Capacity Snapshots</span>
         </div>
-        <div style="position: relative; height: 350px; width: 100%;">
-          <canvas id="forecastChart"></canvas>
+        
+        <div class="twin-grid">
+          <!-- Beds -->
+          <div class="twin-item">
+            <div class="twin-title">🛏️ General Beds</div>
+            <div class="twin-val" id="twin-beds">180 / 300</div>
+            <div class="twin-sub" id="twin-beds-sub">60% utilization</div>
+          </div>
+          <!-- ICU -->
+          <div class="twin-item">
+            <div class="twin-title">🚨 ICU Beds</div>
+            <div class="twin-val" id="twin-icu">35 / 50</div>
+            <div class="twin-sub" id="twin-icu-sub">30% utilization</div>
+          </div>
+          <!-- Doctors -->
+          <div class="twin-item">
+            <div class="twin-title">👨‍⚕️ Active Doctors</div>
+            <div class="twin-val" id="twin-docs">25 / 40</div>
+            <div class="twin-sub" id="twin-docs-sub">62.5% shift availability</div>
+          </div>
+          <!-- Nurses -->
+          <div class="twin-item">
+            <div class="twin-title">👩‍⚕️ Active Nurses</div>
+            <div class="twin-val" id="twin-nurses">55 / 80</div>
+            <div class="twin-sub" id="twin-nurses-sub">68.8% shift availability</div>
+          </div>
+          <!-- Oxygen -->
+          <div class="twin-item">
+            <div class="twin-title">🧪 Oxygen Utilization</div>
+            <div class="twin-val" id="twin-oxygen">65.0%</div>
+            <div class="twin-sub">Liquid supply level</div>
+          </div>
+          <!-- Ventilators -->
+          <div class="twin-item">
+            <div class="twin-title">💨 Ventilators Free</div>
+            <div class="twin-val" id="twin-vents">18 / 25</div>
+            <div class="twin-sub" id="twin-vents-sub">72% availability</div>
+          </div>
+          <!-- Ambulances -->
+          <div class="twin-item">
+            <div class="twin-title">🚑 Active Ambulances</div>
+            <div class="twin-val" id="twin-ambulances">2</div>
+            <div class="twin-sub">EMS dispatcher queue</div>
+          </div>
+          <!-- Waiting -->
+          <div class="twin-item">
+            <div class="twin-title">⏳ Patients Waiting</div>
+            <div class="twin-val" id="twin-waiting">5</div>
+            <div class="twin-sub">Emergency queue size</div>
+          </div>
         </div>
       </div>
 
-      <!-- Real-Time Emergency Alerts Feed -->
-      <div class="glass-card" id="alert-panel">
-        <div class="card-header">
-          <h2>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-            Live Emergency Alerts
-          </h2>
-          <span class="system-time" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" id="websocket-status">WS Disconnected</span>
+      <!-- Continuous ML Predictions -->
+      <div class="glass-card" id="predictions-panel">
+        <div class="card-header" style="flex-wrap: wrap; gap: 0.5rem;">
+          <h2>🔮 Continuous ML Demand Predictions</h2>
+          <div class="horizon-tabs" style="display: flex; gap: 0.35rem; background: rgba(255,255,255,0.03); padding: 0.25rem; border-radius: 8px; border: 1px solid var(--card-border);">
+            <button class="active-tab" id="btn-30m" onclick="selectHorizon('30m')" style="background: var(--accent-blue); color: var(--bg-primary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">30m</button>
+            <button id="btn-1h" onclick="selectHorizon('1h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">1h</button>
+            <button id="btn-6h" onclick="selectHorizon('6h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">6h</button>
+            <button id="btn-24h" onclick="selectHorizon('24h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">24h</button>
+          </div>
         </div>
-        <div class="alert-feed-container" id="alert-feed">
-          <div class="empty-alerts">
-            <div class="empty-alerts-icon">🔔</div>
-            <p>Listening for real-time overload triggers...</p>
-            <span style="font-size: 0.8rem; opacity: 0.7;">System will flash here if admissions exceed threshold.</span>
+        
+        <div class="twin-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+          <!-- Beds Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Beds Demand</div>
+            <div class="twin-val highlight-blue" id="pred-beds">0.0</div>
+            <div class="twin-sub" id="pred-beds-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-beds-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- ICU Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">ICU Bed Demand</div>
+            <div class="twin-val highlight-cyan" id="pred-icu">0.0</div>
+            <div class="twin-sub" id="pred-icu-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-icu-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Doctors Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Docs Needed</div>
+            <div class="twin-val highlight-yellow" id="pred-docs">0.0</div>
+            <div class="twin-sub" id="pred-docs-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-docs-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Nurses Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Nurses Needed</div>
+            <div class="twin-val highlight-yellow" id="pred-nurses">0.0</div>
+            <div class="twin-sub" id="pred-nurses-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-nurses-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Oxygen Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Oxygen Demand</div>
+            <div class="twin-val highlight-blue" id="pred-oxygen">0.0%</div>
+            <div class="twin-sub" id="pred-oxygen-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-oxygen-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Ventilators Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Vents Needed</div>
+            <div class="twin-val highlight-cyan" id="pred-vents">0.0</div>
+            <div class="twin-sub" id="pred-vents-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-vents-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Queue Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">ER Wait Time</div>
+            <div class="twin-val highlight-yellow" id="pred-queue">0.0</div>
+            <div class="twin-sub" id="pred-queue-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-queue-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Ambulance Demand -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Ambulances</div>
+            <div class="twin-val highlight-blue" id="pred-ambulances">0.0</div>
+            <div class="twin-sub" id="pred-ambulances-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-ambulances-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Load Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Load Index</div>
+            <div class="twin-val highlight-cyan" id="pred-load">0.0</div>
+            <div class="twin-sub" id="pred-load-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-load-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Pressure Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Pressure Index</div>
+            <div class="twin-val highlight-yellow" id="pred-pressure">0.0</div>
+            <div class="twin-sub" id="pred-pressure-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-pressure-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+          </div>
+          <!-- Availability Required -->
+          <div class="twin-item prediction-item">
+            <div class="twin-title">Beds Free</div>
+            <div class="twin-val highlight-blue" id="pred-availability">0.0</div>
+            <div class="twin-sub" id="pred-availability-ci">CI: [0.0, 0.0]</div>
+            <div class="twin-sub" id="pred-availability-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
           </div>
         </div>
       </div>
 
     </section>
 
-    <!-- Bottom Panel: Department Load Heatmap -->
-    <section class="glass-card" id="heatmap-panel">
-      <div class="card-header">
-        <h2>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-          Dynamic Department Load Intensity Matrix
-        </h2>
-        <span style="font-size: 0.8rem; color: var(--text-muted);">Last 8 Hours Load Tracking</span>
+    <!-- Forecast & Recommendations Split -->
+    <section class="main-content">
+      <!-- Bed Occupancy & Inflow Forecast Chart -->
+      <div class="glass-card" id="chart-panel">
+        <div class="card-header">
+          <h2>📈 24-Hour Predictive Demand Forecast</h2>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Model: Prophet Time Series</span>
+        </div>
+        <div style="position: relative; height: 320px; width: 100%;">
+          <canvas id="forecastChart"></canvas>
+        </div>
       </div>
-      <div class="heatmap-container">
-        <table class="heatmap-table">
-          <thead>
-            <tr id="heatmap-time-headers">
-              <th style="text-align: left; width: 180px;">Department</th>
-              <!-- Hours will load dynamically here -->
-            </tr>
-          </thead>
-          <tbody id="heatmap-body">
-            <!-- Rows will load dynamically here -->
-          </tbody>
-        </table>
+
+      <!-- Actionable Recommendation Engine & Alerts -->
+      <div class="glass-card" id="alert-recs-panel">
+        <div class="card-header">
+          <h2>⚡ Proactive Decision Recommendations</h2>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">AI Action Engine</span>
+        </div>
+        <div class="recs-list" id="recs-feed">
+          <div class="empty-alerts">
+            <p>Analyzing capacity metrics...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom Panel: Alerts Feed -->
+    <section class="glass-card" id="alert-panel">
+      <div class="card-header">
+        <h2>🔔 System Overload & Capacity Alerts</h2>
+        <span style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" id="websocket-status">WS Connecting...</span>
+      </div>
+      <div class="alert-feed-container" id="alert-feed">
+        <div class="empty-alerts">
+          <p>Listening for real-time rule-based or AI predictive triggers...</p>
+        </div>
       </div>
     </section>
 

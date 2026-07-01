@@ -440,3 +440,136 @@ header h1 {
     transform: translateY(0);
   }
 }
+
+/* v2.0 Grid and Telemetry Styles */
+.twin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.twin-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  transition: var(--transition-smooth);
+}
+
+.twin-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.twin-title {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+}
+
+.twin-val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.twin-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.prediction-item {
+  border-color: rgba(59, 130, 246, 0.15);
+  box-shadow: inset 0 0 8px rgba(59, 130, 246, 0.02);
+}
+
+.highlight-blue {
+  color: var(--accent-blue);
+  text-shadow: 0 0 10px var(--accent-blue-glow);
+}
+
+.highlight-cyan {
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
+.highlight-yellow {
+  color: var(--status-warn);
+  text-shadow: 0 0 10px var(--status-warn-glow);
+}
+
+/* Recommendations Styles */
+.recs-list {
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.rec-item {
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.85rem;
+  border-left: 4px solid var(--accent-blue);
+  animation: slide-in 0.4s ease both;
+}
+
+.rec-item[data-type="BED_MANAGEMENT"] { border-left-color: var(--accent-blue); }
+.rec-item[data-type="STAFFING"] { border-left-color: var(--status-warn); }
+.rec-item[data-type="LOGISTICS"] { border-left-color: var(--accent-cyan); }
+.rec-item[data-type="EMERGENCY_PROTOCOL"] { border-left-color: var(--status-danger); }
+
+.rec-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.rec-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.rec-action-item {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rec-action-item::before {
+  content: "•";
+  color: var(--accent-cyan);
+  font-weight: bold;
+}
+
+.rec-btn {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+  color: var(--bg-primary);
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 0.65rem;
+  transition: var(--transition-smooth);
+}
+
+.rec-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--accent-blue-glow);
+  opacity: 0.9;
+}
+
