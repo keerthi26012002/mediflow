@@ -132,3 +132,18 @@ class RecommendationSchema(BaseModel):
     recommendation_type: str
     message: str
     action_items: List[str]
+
+class OperationalSnapshotResponse(BaseModel):
+    timestamp: str
+    digital_twin_state: str
+    hospital_load_index: float
+    capacity_risk_score: float
+    overload_risk_score: float
+    bed_capacity: Dict[str, Any]
+    staff: Dict[str, Any]
+    emergency_resources: Dict[str, Any]
+    kafka_topics: List[Dict[str, Any]]
+    service_layers: List[Dict[str, str]]
+    security_controls: List[Dict[str, str]]
+    data_sources: List[Dict[str, str]]
+    recommendations: List[str]

@@ -16,31 +16,43 @@ def test_xgb_model_load_and_predict():
     model = joblib.load(XGB_MODEL_PATH)
     assert model is not None
     
-    # Create a mock patient feature row matching the training features
-    # age, gender, emergency_severity_level, hour, day_of_week, is_weekend, wait_time, department, icu_beds_available, ambulance_requests, doctor_availability, oxygen_utilization
-    sample_df = pd.DataFrame([{
-        "age": 45.0,
-        "gender": 1,
-        "emergency_severity_level": 3.0,
-        "hour": 14,
-        "day_of_week": 2,
-        "is_weekend": 0,
-        "shift": 1,
-        "wait_time": 45.0,
-        "department_encoded": 3,
-        "arrival_mode_encoded": 1,
-        "triage_level_encoded": 2,
-        "icu_beds_available": 12.0,
-        "general_beds_available": 150.0,
-        "ambulance_requests": 2.0,
-        "doctor_availability": 15.0,
-        "nurse_availability": 30.0,
-        "oxygen_utilization": 80.0,
-        "ventilator_availability": 4.0,
-        "capacity_risk_score": 35.5,
-        "hospital_load_index": 42.0,
-        "overload_risk_score": 50.0
-    }])
+    # Dynamic feature alignment with the model's trained signature
+    if hasattr(model, "feature_names_in_"):
+        feats_dict = {}
+        for col in model.feature_names_in_:
+            if col == "department":
+                feats_dict[col] = 3
+            elif col == "department_encoded":
+                feats_dict[col] = 3
+            elif col in ["gender", "gender_encoded", "is_weekend"]:
+                feats_dict[col] = 1
+            else:
+                feats_dict[col] = 10.0 # default fallback
+        sample_df = pd.DataFrame([feats_dict])
+    else:
+        sample_df = pd.DataFrame([{
+            "age": 45.0,
+            "gender": 1,
+            "emergency_severity_level": 3.0,
+            "hour": 14,
+            "day_of_week": 2,
+            "is_weekend": 0,
+            "shift": 1,
+            "wait_time": 45.0,
+            "department_encoded": 3,
+            "arrival_mode_encoded": 1,
+            "triage_level_encoded": 2,
+            "icu_beds_available": 12.0,
+            "general_beds_available": 150.0,
+            "ambulance_requests": 2.0,
+            "doctor_availability": 15.0,
+            "nurse_availability": 30.0,
+            "oxygen_utilization": 80.0,
+            "ventilator_availability": 4.0,
+            "capacity_risk_score": 35.5,
+            "hospital_load_index": 42.0,
+            "overload_risk_score": 50.0
+        }])
     
     pred = model.predict(sample_df)
     proba = model.predict_proba(sample_df)
