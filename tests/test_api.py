@@ -4,6 +4,11 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 # Import app
 from app.main import app
+from app.auth import get_current_user
+from app.rate_limiter import rate_limit
+
+app.dependency_overrides[get_current_user] = lambda: {"email": "admin@mediflow.ai", "role": "Admin"}
+app.dependency_overrides[rate_limit] = lambda: None
 
 client = TestClient(app)
 
@@ -15,8 +20,6 @@ def test_health_check():
 
 @patch("app.routers.dashboard.get_database")
 def test_dashboard_live_empty(mock_get_db):
-    """Verify dashboard/live behaves correctly when database is empty."""
-    # Mock MongoDB find_one returning None
     mock_db = MagicMock()
     mock_collection = MagicMock()
     
@@ -33,6 +36,26 @@ def test_dashboard_live_empty(mock_get_db):
     assert res_data["icu_beds_free"] == 0
     assert res_data["avg_wait_time"] == 0.0
     assert res_data["overload_status"] is False
+
+@patch("app.routers.dashboard.get_database")
+def test_dashboard_operations_empty(mock_get_db):
+    """Verify the operations snapshot returns the architecture/control-tower contract."""
+    mock_db = MagicMock()
+    mock_collection = MagicMock()
+    mock_collection.find_one = AsyncMock(return_value=None)
+    mock_collection.count_documents = AsyncMock(return_value=0)
+    mock_db.__getitem__.return_value = mock_collection
+    mock_get_db.return_value = mock_db
+
+    response = client.get("/dashboard/operations")
+    assert response.status_code == 200
+    res_data = response.json()
+    assert res_data["digital_twin_state"] == "Awaiting Live Data"
+    assert "bed_capacity" in res_data
+    assert "emergency_resources" in res_data
+    assert len(res_data["kafka_topics"]) >= 5
+    assert len(res_data["security_controls"]) >= 4
+    assert res_data["recommendations"]
 
 @patch("app.routers.predictions.get_database")
 def test_history_admissions_empty(mock_get_db):
