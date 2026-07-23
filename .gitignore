@@ -49,3 +49,9 @@ app/ml/models/*.json
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Agent / System Metadata
+.gemini/
+mlflow.db
+*(1).csv
+datasets/*(1).csv
