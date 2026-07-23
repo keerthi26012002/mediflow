@@ -128,6 +128,51 @@ async def get_active_recommendations(limit: int = Query(default=10, ge=1, le=50)
         r.pop("parsed_timestamp", None)
     return recs
 
+@router.get("/evaluations", response_model=Dict[str, Any])
+async def get_evaluations():
+    """Retrieves the latest rolling prediction validation metrics."""
+    db = get_database()
+    evals = await db["model_evaluations"].find_one({"_id": "current_evaluations"})
+    if not evals:
+        return {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "regression": {}, "classification": {}}
+    evals.pop("_id", None)
+    evals.pop("parsed_timestamp", None)
+    return evals
+
+@router.get("/anomalies", response_model=List[Dict[str, Any]])
+async def get_anomalies(limit: int = Query(default=20, ge=1, le=100)):
+    """Retrieves historical operational and statistical anomalies."""
+    db = get_database()
+    cursor = db["anomalies"].find().sort("timestamp", -1).limit(limit)
+    anoms = await cursor.to_list(length=limit)
+    for a in anoms:
+        a.pop("_id", None)
+        a.pop("parsed_timestamp", None)
+    return anoms
+
+@router.get("/policies", response_model=Dict[str, Any])
+async def get_active_policy():
+    """Retrieves the active hospital optimization policy."""
+    db = get_database()
+    policy_doc = await db["hospital_configuration"].find_one({"_id": "active_policy"})
+    if not policy_doc:
+        return {"policy": "DEFAULT"}
+    return {"policy": policy_doc.get("policy", "DEFAULT")}
+
+@router.post("/policies", response_model=Dict[str, Any])
+async def set_active_policy(payload: Dict[str, str]):
+    """Sets the active hospital optimization policy ('DEFAULT', 'PRESERVE_ICU', 'MAXIMIZE_THROUGHPUT')."""
+    db = get_database()
+    policy = payload.get("policy", "DEFAULT").upper()
+    if policy not in ["DEFAULT", "PRESERVE_ICU", "MAXIMIZE_THROUGHPUT"]:
+        raise HTTPException(status_code=400, detail="Invalid policy. Must be one of: DEFAULT, PRESERVE_ICU, MAXIMIZE_THROUGHPUT")
+    await db["hospital_configuration"].replace_one(
+        {"_id": "active_policy"},
+        {"policy": policy},
+        upsert=True
+    )
+    return {"status": "success", "policy": policy}
+
 @router.post("/events", response_model=Dict[str, Any])
 async def ingest_manual_event(event_data: Dict[str, Any]):
     """Manually ingests an operational event, updating the twin and trigger prediction pipelines."""

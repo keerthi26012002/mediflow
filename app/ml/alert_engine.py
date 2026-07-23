@@ -10,11 +10,13 @@ TOTAL_VENTILATORS = 25
 def check_alerts_and_recommendations(
     state: Dict[str, Any], 
     metrics: Dict[str, Any], 
-    predictions: Dict[str, Any]
+    predictions: Dict[str, Any],
+    policy: str = "DEFAULT"
 ) -> Dict[str, Any]:
     """
     Evaluates current metrics and multi-horizon predictions to generate
     hybrid (Rule + AI) alerts and operational decision support recommendations.
+    Prioritizes and ranks recommendations based on hospital policies.
     """
     timestamp = state.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     alerts = []
@@ -83,7 +85,6 @@ def check_alerts_and_recommendations(
         })
 
     # 2. ------------------ AI-DRIVEN PREDICTIVE ALERTS ------------------
-    # We inspect predictions across horizons: 30m, 1h, 6h, 24h
     horizons = ["30m", "1h", "6h", "24h"]
     horizon_readable = {
         "30m": "30 minutes",
@@ -109,7 +110,7 @@ def check_alerts_and_recommendations(
                 "estimated_time_until_overload": horizon_readable[h],
                 "recommended_action": "Delay elective admissions and schedule discharges."
             })
-            break # Trigger alert for earliest horizon only
+            break
 
     # AI ICU Overload
     icu_preds = predictions.get("icu_beds_required", {})
@@ -174,11 +175,11 @@ def check_alerts_and_recommendations(
     queue_preds = predictions.get("queue_required", {})
     for h in horizons:
         q_val = queue_preds.get(h, {}).get("value", 0.0)
-        if q_val > 50.0: # high wait time forecast
+        if q_val > 15.0:  # high patients waiting forecast
             alerts.append({
                 "timestamp": timestamp,
                 "alert_type": "AI",
-                "message": f"AI Emergency Surge Alert: ER wait time is predicted to surge to {q_val} mins.",
+                "message": f"AI Emergency Surge Alert: ER wait queue is predicted to surge to {q_val} patients.",
                 "severity": "WARNING",
                 "confidence": 0.82,
                 "department": "Emergency",
@@ -218,7 +219,9 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Reduces boarding delays in the Emergency Department.",
             "confidence_score": 0.90,
             "urgency_level": "IMMEDIATE" if bed_util > 90.0 else "HIGH",
-            "estimated_improvement": "Expected waiting time reduction: 15 minutes."
+            "estimated_improvement": "Expected waiting time reduction: 15 minutes.",
+            "impact_score": 85.0,
+            "urgency_score": 90.0 if bed_util > 90.0 else 75.0
         })
 
     # Call Additional Doctors
@@ -232,7 +235,9 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Accelerates patient consultations and ER discharge clearances.",
             "confidence_score": 0.85,
             "urgency_level": "HIGH",
-            "estimated_improvement": "Increases patient turnover by 12%."
+            "estimated_improvement": "Increases patient turnover by 12%.",
+            "impact_score": 75.0,
+            "urgency_score": 70.0
         })
 
     # Increase Nursing Staff
@@ -246,7 +251,9 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Maintains patient care quality standards and prevents staff fatigue.",
             "confidence_score": 0.87,
             "urgency_level": "HIGH",
-            "estimated_improvement": "Restores nurse-to-patient ratio to nominal 1:4."
+            "estimated_improvement": "Restores nurse-to-patient ratio to nominal 1:4.",
+            "impact_score": 75.0,
+            "urgency_score": 70.0
         })
 
     # Delay Elective Surgeries
@@ -259,7 +266,9 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Preserves critical capacity for emergency trauma and cardiac cases.",
             "confidence_score": 0.92,
             "urgency_level": "HIGH",
-            "estimated_improvement": "Frees up 6 general beds and 2 ICU beds within 4 hours."
+            "estimated_improvement": "Frees up 6 general beds and 2 ICU beds within 4 hours.",
+            "impact_score": 90.0,
+            "urgency_score": 75.0
         })
 
     # Transfer Patients
@@ -272,7 +281,9 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Restores safety margin for incoming high-severity cases.",
             "confidence_score": 0.88,
             "urgency_level": "IMMEDIATE",
-            "estimated_improvement": "Reduces ICU stress index by 25 points."
+            "estimated_improvement": "Reduces ICU stress index by 25 points.",
+            "impact_score": 95.0,
+            "urgency_score": 90.0
         })
 
     # Request Oxygen Supply
@@ -286,7 +297,9 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Prevents manifold pressure drops and ensures continuous respiratory support.",
             "confidence_score": 0.95,
             "urgency_level": "HIGH",
-            "estimated_improvement": "Restores backup reserve tank levels to 100%."
+            "estimated_improvement": "Restores backup reserve tank levels to 100%.",
+            "impact_score": 80.0,
+            "urgency_score": 80.0
         })
 
     # Request Ambulances
@@ -300,7 +313,9 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Ensures continuous emergency response coverage for the sector.",
             "confidence_score": 0.81,
             "urgency_level": "MEDIUM",
-            "estimated_improvement": "Reduces regional ambulance response times by 8 minutes."
+            "estimated_improvement": "Reduces regional ambulance response times by 8 minutes.",
+            "impact_score": 65.0,
+            "urgency_score": 60.0
         })
 
     # Activate Emergency Protocol
@@ -314,10 +329,39 @@ def check_alerts_and_recommendations(
             "expected_operational_benefit": "Deploys incident command structure and unlocks emergency operational budgets.",
             "confidence_score": 0.94,
             "urgency_level": "IMMEDIATE",
-            "estimated_improvement": "Restores hospital readiness score by 20 points in 2 hours."
+            "estimated_improvement": "Restores hospital readiness score by 20 points in 2 hours.",
+            "impact_score": 98.0,
+            "urgency_score": 95.0
         })
+
+    # Apply Policy weighting and prioritize
+    for r in recommendations:
+        impact = r["impact_score"]
+        urgency = r["urgency_score"]
+        rec_type = r["recommendation_type"]
+        
+        # Policy boosts
+        if policy == "PRESERVE_ICU":
+            if rec_type in ["PATIENT_FLOW", "OPERATIONAL"]:
+                urgency += 20.0
+                impact += 15.0
+        elif policy == "MAXIMIZE_THROUGHPUT":
+            if rec_type in ["BED_MANAGEMENT", "STAFFING"]:
+                urgency += 20.0
+                impact += 15.0
+
+        # Calculate final operational benefit score
+        r["benefit_score"] = round(impact * 0.6 + urgency * 0.4, 1)
+
+    # Sort recommendations by benefit score descending
+    sorted_recs = sorted(recommendations, key=lambda x: x["benefit_score"], reverse=True)
+    
+    # Remove temporary tracking scores for API clean payload
+    for r in sorted_recs:
+        r.pop("impact_score", None)
+        r.pop("urgency_score", None)
 
     return {
         "alerts": alerts,
-        "recommendations": recommendations
+        "recommendations": sorted_recs
     }

@@ -17,7 +17,8 @@ from app.db import (
     COLLECTION_PREDICTIONS,
     COLLECTION_ALERTS,
     COLLECTION_RECOMMENDATIONS,
-    COLLECTION_AUDIT_LOGS
+    COLLECTION_AUDIT_LOGS,
+    COLLECTION_HOSPITAL_CONFIGURATION
 )
 from app.ml.capacity_intelligence import calculate_capacity_metrics
 from app.ml.inference import extract_streaming_features, predict_capacity_demands_v2, forecast_beds
@@ -28,6 +29,7 @@ from app.websocket_manager import manager
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
 
 # Constants
+COLLECTION_PREDICTIONS_HISTORY = "predictions_history"
 TOTAL_GENERAL_BEDS = 300
 TOTAL_ICU_BEDS = 50
 TOTAL_DOCTORS = 40
@@ -206,8 +208,16 @@ async def process_stream_update(event_source: str, data: dict):
         state_copy["current_admissions"] = admissions_count
         state_copy["current_discharges"] = discharges_count
 
+        # Get active policy
+        policy_doc = await db[COLLECTION_HOSPITAL_CONFIGURATION].find_one({"_id": "active_policy"})
+        active_policy = policy_doc.get("policy", "DEFAULT") if policy_doc else "DEFAULT"
+
+        # Query recent capacity metrics history for MA calculation
+        cap_history_cursor = db[COLLECTION_CAPACITY_METRICS + "_history"].find().sort([("parsed_timestamp", -1)]).limit(100)
+        recent_capacity_history = await cap_history_cursor.to_list(length=100)
+
         # 4. Calculate Capacity Intelligence Metrics
-        metrics = calculate_capacity_metrics(state_copy, recent_events)
+        metrics = calculate_capacity_metrics(state_copy, recent_events, recent_capacity_history)
         metrics["parsed_timestamp"] = parsed_time
         await db[COLLECTION_CAPACITY_METRICS].replace_one(
             {"_id": "current_metrics"}, 
@@ -215,6 +225,10 @@ async def process_stream_update(event_source: str, data: dict):
             upsert=True
         )
         redis.set("capacity_metrics:live", json.dumps(metrics, default=str))
+
+        # Save history log entries
+        await db[COLLECTION_CAPACITY_METRICS + "_history"].insert_one(metrics.copy())
+        await db[COLLECTION_HOSPITAL_STATE + "_history"].insert_one(state_copy.copy())
 
         # 5. Extract Streaming Features & Run Predictions
         # Map values back into data to ensure features calculation gets the updated state
@@ -241,12 +255,50 @@ async def process_stream_update(event_source: str, data: dict):
         )
         redis.set("predictions:live", json.dumps(predictions, default=str))
 
+        # Write individual prediction targets/horizons to history
+        history_records = []
+        reg_targets = ["beds_required", "icu_beds_required", "doctors_required", "nurses_required", "ventilators_required", "oxygen_required", "queue_required", "ambulances_required", "load_required", "pressure_required", "availability_required"]
+        horizons = ["30m", "1h", "6h", "24h"]
+        horizon_deltas = {
+            "30m": timedelta(minutes=30),
+            "1h": timedelta(hours=1),
+            "6h": timedelta(hours=6),
+            "24h": timedelta(hours=24)
+        }
+        for key in reg_targets:
+            target_preds = predictions.get(key, {})
+            for h_name in horizons:
+                h_pred = target_preds.get(h_name, {})
+                if "value" in h_pred:
+                    history_records.append({
+                        "timestamp": timestamp_str,
+                        "parsed_timestamp": parsed_time,
+                        "target": key,
+                        "horizon": h_name,
+                        "predicted_time": parsed_time + horizon_deltas[h_name],
+                        "predicted_value": h_pred["value"],
+                        "confidence_interval": h_pred.get("ci", [0.0, 0.0]),
+                        "explanation": h_pred.get("explanation", ""),
+                        "model_version": h_pred.get("model_version", "v2.2"),
+                        "validated": False
+                    })
+        if history_records:
+            await db[COLLECTION_PREDICTIONS_HISTORY].insert_many(history_records)
+
+        # Run prediction validation engine
+        from app.ml.prediction_validation import validate_predictions
+        await validate_predictions(state_copy, metrics)
+
+        # Run anomaly detection
+        from app.ml.anomaly_detection import detect_anomalies
+        anomalies = await detect_anomalies(state_copy, metrics)
+
         # Update Prometheus Metrics
         from app.ml.monitoring import update_prometheus_metrics
         update_prometheus_metrics(metrics, predictions)
 
-        # 6. Evaluate alerts & recommendations
-        alerts_recs = check_alerts_and_recommendations(state_copy, metrics, predictions)
+        # 6. Evaluate alerts & recommendations using current policy
+        alerts_recs = check_alerts_and_recommendations(state_copy, metrics, predictions, active_policy)
 
         # Save active alerts
         if alerts_recs["alerts"]:
@@ -271,6 +323,14 @@ async def process_stream_update(event_source: str, data: dict):
                 producer.send("hospital.alerts", value=alert)
             producer.flush()
 
+        # Fetch current evaluations summary
+        evaluations = await db["model_evaluations"].find_one({"_id": "current_evaluations"})
+        if evaluations:
+            evaluations.pop("_id", None)
+            evaluations.pop("parsed_timestamp", None)
+        else:
+            evaluations = {}
+
         # 8. Push live updates to dashboard clients via WebSockets
         broadcast_payload = {
             "timestamp": timestamp_str,
@@ -278,7 +338,10 @@ async def process_stream_update(event_source: str, data: dict):
             "capacity_metrics": {k: v for k, v in metrics.items() if k != "parsed_timestamp"},
             "predictions": {k: v for k, v in predictions.items() if k != "parsed_timestamp"},
             "alerts": alerts_recs["alerts"],
-            "recommendations": alerts_recs["recommendations"]
+            "recommendations": alerts_recs["recommendations"],
+            "anomalies": anomalies,
+            "evaluations": evaluations,
+            "active_policy": active_policy
         }
         await manager.broadcast(broadcast_payload)
 

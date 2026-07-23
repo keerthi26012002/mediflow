@@ -225,50 +225,112 @@ def pad_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
     df["icu_occupied_lag_1"] = df["icu_beds_occupied"]
     return df
 
-def generate_local_explanation(model, features_df, target_key: str) -> str:
+FEATURE_BASELINES = {
+    "general_beds_available": 150.0,
+    "icu_beds_available": 25.0,
+    "doctor_availability": 20.0,
+    "nurse_availability": 40.0,
+    "oxygen_utilization": 70.0,
+    "ventilator_availability": 10.0,
+    "wait_time": 30.0,
+    "emergency_severity_level": 3.0,
+    "general_beds_occupied": 150.0,
+    "icu_beds_occupied": 25.0,
+    "doctors_occupied": 20.0,
+    "nurses_occupied": 40.0,
+    "ventilators_occupied": 15.0,
+    "patients_waiting": 5.0,
+    "ambulances_active": 2.0,
+    "hospital_load_index": 35.0,
+    "overload_risk_score": 40.0,
+    "resource_pressure_index": 35.0,
+    "staff_fatigue_index": 45.0
+}
+
+EXPLANATION_MAP = {
+    "general_beds_available": "available general beds",
+    "icu_beds_available": "ICU capacity levels",
+    "doctor_availability": "medical staff availability",
+    "nurse_availability": "nurse staffing levels",
+    "rolling_adm_1h": "recent admissions inflow",
+    "rolling_adm_6h": "6-hour admissions trend",
+    "rolling_adm_24h": "daily admission surge",
+    "surge_probability": "surge probability indicators",
+    "wait_time": "ER waiting times",
+    "velocity_1h": "occupancy velocity shifts",
+    "pressure_trend_1h": "hospital load pressure trends",
+    "beds_occupied_lag_1": "prior hour bed occupancy",
+    "general_beds_occupied": "general beds occupied",
+    "icu_beds_occupied": "ICU beds occupied",
+    "doctors_occupied": "doctors occupied",
+    "nurses_occupied": "nurses occupied",
+    "oxygen_utilization": "oxygen utilization",
+    "ventilator_availability": "ventilator availability",
+    "ventilators_occupied": "ventilators occupied",
+    "patients_waiting": "waiting patients count",
+    "ambulances_active": "active ambulance routing"
+}
+
+def generate_local_explanation_and_attributions(model, features_df, target_key: str) -> tuple:
     """
     Computes local feature importance explainability by identifying which of 
     the top features contributed most to the current prediction.
+    Returns: (natural_language_reasoning, attributions_list)
     """
     if not hasattr(model, "feature_importances_"):
-        return "Nominal operation trend predicted."
+        return "Nominal operation trend predicted.", []
         
     importances = model.feature_importances_
     features = list(features_df.columns)
     
-    # Sort features by gain/importance weight
-    feat_imp = sorted(zip(features, importances), key=lambda x: x[1], reverse=True)
-    top_feats = [f[0] for f in feat_imp if f[1] > 0.01][:3]
+    # Compute local SHAP-like attributions
+    raw_attributions = []
+    for feat, imp in zip(features, importances):
+        if imp > 0.0:
+            val = float(features_df.iloc[0].get(feat, 0.0))
+            base = FEATURE_BASELINES.get(feat, 0.0)
+            # Deviation from baseline
+            dev = val - base
+            # Contribution is importance * deviation
+            attr_val = dev * imp
+            raw_attributions.append((feat, attr_val, imp))
+
+    # Sort by absolute attribution value
+    sorted_attributions = sorted(raw_attributions, key=lambda x: abs(x[1]), reverse=True)
     
+    # Calculate percentage contributions
+    total_abs = sum(abs(x[1]) for x in sorted_attributions)
+    attributions_list = []
+    if total_abs > 0.0:
+        for feat, attr_val, imp in sorted_attributions[:5]:
+            pct = (abs(attr_val) / total_abs) * 100.0
+            val = float(features_df.iloc[0].get(feat, 0.0))
+            attributions_list.append({
+                "feature": feat,
+                "display_name": EXPLANATION_MAP.get(feat, feat.replace("_", " ")),
+                "percentage": round(pct, 1),
+                "value": round(val, 2),
+                "contribution": "positive" if attr_val >= 0 else "negative"
+            })
+
+    # Pick top drivers for the natural language reasoning
+    top_feats = [x[0] for x in sorted_attributions if x[2] > 0.01][:3]
     if not top_feats:
-        return "Predictive trend based on baseline historical capacity levels."
+        return "Predictive trend based on baseline historical capacity levels.", attributions_list
 
-    # Format human readable descriptions
-    explanation_map = {
-        "general_beds_available": "available general beds",
-        "icu_beds_available": "ICU capacity levels",
-        "doctor_availability": "medical staff availability",
-        "nurse_availability": "nurse staffing levels",
-        "rolling_adm_1h": "recent admissions inflow",
-        "rolling_adm_6h": "6-hour admissions trend",
-        "rolling_adm_24h": "daily admission surge",
-        "surge_probability": "surge probability indicators",
-        "wait_time": "ER waiting times",
-        "velocity_1h": "occupancy velocity shifts",
-        "pressure_trend_1h": "hospital load pressure trends",
-        "beds_occupied_lag_1": "prior hour bed occupancy"
-    }
-
-    readable_feats = [explanation_map.get(f, f.replace("_", " ")) for f in top_feats]
+    readable_feats = [EXPLANATION_MAP.get(f, f.replace("_", " ")) for f in top_feats]
     
-    # Extract weights for output
+    # Extract weights for the global impact output
+    feat_imp = sorted(zip(features, importances), key=lambda x: x[1], reverse=True)
     w1 = int(feat_imp[0][1] * 100)
     w2 = int(feat_imp[1][1] * 100) if len(feat_imp) > 1 else 0
     
     if len(readable_feats) == 1:
-        return f"Prediction primarily driven by {readable_feats[0]} (influence: {w1}%)."
+        reasoning = f"Prediction primarily driven by {readable_feats[0]} (influence: {w1}%)."
     else:
-        return f"Influenced by {readable_feats[0]} ({w1}%) and {readable_feats[1]} ({w2}%)."
+        reasoning = f"Influenced by {readable_feats[0]} ({w1}%) and {readable_feats[1]} ({w2}%)."
+        
+    return reasoning, attributions_list
 
 def predict_admission(event: dict) -> dict:
     """Predicts patient admission classification (v1.0 backward compatibility)."""
@@ -290,6 +352,24 @@ def predict_admission(event: dict) -> dict:
 
             proba = float(model.predict_proba(feats)[0][1])
             pred_admitted = bool(proba >= 0.5)
+            
+            # Save this admission prediction to the DB for later validation matching
+            db = get_database()
+            if db is not None:
+                # Run as fire-and-forget or async task
+                import asyncio
+                pid = event.get("patient_id", "unknown")
+                asyncio.create_task(db["admission_predictions"].replace_one(
+                    {"patient_id": pid},
+                    {
+                        "patient_id": pid,
+                        "predicted_admission": pred_admitted,
+                        "admission_proba": proba,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    },
+                    upsert=True
+                ))
+
             return {
                 "patient_id": event.get("patient_id", "unknown"),
                 "timestamp": event.get("timestamp", ""),
@@ -310,11 +390,23 @@ def predict_admission(event: dict) -> dict:
         "model_loaded": False
     }
 
+# local in-memory prediction cache
+prediction_cache = {}
+
+def get_prediction_cache_key(features_df, target_key: str, horizon: float) -> str:
+    keys = ["general_beds_available", "icu_beds_available", "doctor_availability", "nurse_availability", "oxygen_utilization", "ventilator_availability"]
+    parts = [target_key, str(horizon)]
+    for k in keys:
+        if k in features_df.columns:
+            parts.append(f"{k}:{round(float(features_df.iloc[0][k]), 1)}")
+    return "_".join(parts)
+
 def predict_capacity_demands_v2(features_df) -> dict:
     """
     Continuous Prediction Engine: Runs multi-horizon inferences (30m, 1h, 6h, 24h)
-    for all 11 regressor targets, generating explanations and confidence intervals.
+    for all 11 regressor targets, generating SHAP-like explanations and confidence intervals.
     """
+    global prediction_cache
     load_models()
     horizons = {"30m": 30.0, "1h": 60.0, "6h": 360.0, "24h": 1440.0}
     predictions_payload = {}
@@ -326,6 +418,12 @@ def predict_capacity_demands_v2(features_df) -> dict:
         predictions_payload[key] = {}
         
         for h_name, h_val in horizons.items():
+            # Check cache first
+            cache_key = get_prediction_cache_key(features_df, key, h_val)
+            if cache_key in prediction_cache:
+                predictions_payload[key][h_name] = prediction_cache[cache_key]
+                continue
+
             if model is not None:
                 try:
                     # Construct feature vector with the horizon
@@ -344,7 +442,6 @@ def predict_capacity_demands_v2(features_df) -> dict:
                     # Post-process bounds
                     if key in ["beds_required", "icu_beds_required", "doctors_required", "nurses_required", "ventilators_required", "queue_required", "ambulances_required"]:
                         val = max(0.0, val)
-                        # Cap at physical limits
                         if key == "beds_required": val = min(300.0, val)
                         elif key == "icu_beds_required": val = min(50.0, val)
                         elif key == "doctors_required": val = min(40.0, val)
@@ -357,26 +454,35 @@ def predict_capacity_demands_v2(features_df) -> dict:
                     ci_lower = round(max(0.0, val - 1.96 * std_err), 1)
                     ci_upper = round(val + 1.96 * std_err, 1)
                     
-                    # Generate explanation
-                    explanation = generate_local_explanation(model, input_vector, key)
+                    # Generate SHAP-like explanations and attributions
+                    explanation, attributions = generate_local_explanation_and_attributions(model, input_vector, key)
 
-                    predictions_payload[key][h_name] = {
+                    # Compute confidence score: 100 - relative standard error representation
+                    denom = max(val, 1.0)
+                    confidence_score = round(max(50.0, min(100.0, 100.0 - (std_err / denom) * 20.0)), 1)
+
+                    pred_entry = {
                         "value": round(val, 1),
                         "ci": [ci_lower, ci_upper],
-                        "explanation": explanation
+                        "explanation": explanation,
+                        "attributions": attributions,
+                        "confidence_score": confidence_score,
+                        "model_version": "v2.2"
                     }
+                    
+                    # Store in cache
+                    prediction_cache[cache_key] = pred_entry
+                    predictions_payload[key][h_name] = pred_entry
                 except Exception as e:
                     print(f"Error predicting {key} at horizon {h_name}: {e}")
                     predictions_payload[key][h_name] = {
-                        "value": 0.0, "ci": [0.0, 0.0], "explanation": "Prediction error."
+                        "value": 0.0, "ci": [0.0, 0.0], "explanation": "Prediction error.", "attributions": [], "confidence_score": 50.0, "model_version": "v2.2"
                     }
             else:
-                # Stub placeholder values
                 predictions_payload[key][h_name] = {
-                    "value": 0.0, "ci": [0.0, 0.0], "explanation": "Model weights offline."
+                    "value": 0.0, "ci": [0.0, 0.0], "explanation": "Model weights offline.", "attributions": [], "confidence_score": 50.0, "model_version": "v2.2"
                 }
 
-    # Add model metadata
     predictions_payload["model_loaded"] = len(models_cache) > 2
     return predictions_payload
 
