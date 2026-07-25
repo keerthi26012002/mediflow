@@ -66,7 +66,20 @@ class LiveDashboardResponse(BaseModel):
 
 class BedForecastPoint(BaseModel):
     ts: str
-    predicted_occupancy: int
+    predicted_occupancy: float
+    timestamp: Optional[str] = None
+    hour: Optional[str] = None
+    occupancy: Optional[float] = None
+    inflow: Optional[float] = None
+    predicted_inflow: Optional[float] = None
+    yhat: Optional[float] = None
+    admissions: Optional[float] = None
+    discharges: Optional[float] = None
+    oxygen: Optional[float] = None
+
+    model_config = {
+        "extra": "ignore"
+    }
 
 class BedForecastResponse(BaseModel):
     hours: int
