@@ -7,8 +7,13 @@ from app.main import app
 from app.auth import get_current_user
 from app.rate_limiter import rate_limit
 
-app.dependency_overrides[get_current_user] = lambda: {"email": "admin@mediflow.ai", "role": "Admin"}
-app.dependency_overrides[rate_limit] = lambda: None
+@pytest.fixture(autouse=True)
+def setup_api_auth():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "admin@mediflow.ai", "role": "Admin", "is_active": True}
+    app.dependency_overrides[rate_limit] = lambda: None
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(rate_limit, None)
 
 client = TestClient(app)
 
@@ -123,4 +128,47 @@ def test_forecast_beds_stub(mock_load_models):
     assert "ts" in res_data["forecast"][0]
     assert "predicted_occupancy" in res_data["forecast"][0]
     assert res_data["model_loaded"] is False  # Stubbed by default
+
+def test_landing_page_route():
+    """Verify that GET / returns the public TemplateMo 618 adapted landing page."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    html = response.text
+    assert "MediFlow AI" in html
+    assert "Intelligent Hospital" in html
+    assert "Capacity Management" in html
+    assert "Access Dashboard" in html
+    assert "Built for Every Hospital Role" in html
+    assert "Zero-Trust Enterprise Governance" in html
+
+def test_login_page_route():
+    """Verify that GET /login returns the dedicated login screen."""
+    response = client.get("/login")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    html = response.text
+    assert "Sign In to Control Center" in html
+    assert "Quick Role Demo Logins" in html
+    assert "admin@mediflow.ai" in html
+
+def test_dashboard_page_route():
+    """Verify that GET /dashboard returns the authenticated dashboard view."""
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    html = response.text
+    assert "MediFlow AI Operations Control" in html
+    assert "dashboard.js" in html
+
+def test_landing_static_assets():
+    """Verify that landing CSS and JS are served cleanly."""
+    res_css = client.get("/landing/landing.css")
+    assert res_css.status_code == 200
+    assert "landing-body" in res_css.text
+
+    res_js = client.get("/landing/landing.js")
+    assert res_js.status_code == 200
+    assert "toggleLandingTheme" in res_js.text
+
 
