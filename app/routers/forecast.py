@@ -2,13 +2,13 @@ from fastapi import APIRouter, Query, HTTPException, Depends
 from app.db import get_database, COLLECTION_ICU_SNAPSHOTS
 from app.schemas import ICUSnapshot, BedForecastResponse, BedForecastPoint
 from app.ml.inference import forecast_beds, _prophet_model
-from app.auth import get_current_user
+from app.auth import require_hospital_state, require_forecast
 from app.rate_limiter import rate_limit
 
 router = APIRouter(tags=["forecast"])
 
 @router.get("/icu/status", response_model=ICUSnapshot, dependencies=[Depends(rate_limit)])
-async def get_latest_icu_status(current_user: dict = Depends(get_current_user)):
+async def get_latest_icu_status(current_user: dict = Depends(require_hospital_state)):
     """Retrieves the latest available ICU status snapshot from MongoDB."""
     db = get_database()
     latest_icu = await db[COLLECTION_ICU_SNAPSHOTS].find_one(sort=[("parsed_timestamp", -1)])
@@ -22,7 +22,7 @@ async def get_latest_icu_status(current_user: dict = Depends(get_current_user)):
 @router.get("/forecast/beds", response_model=BedForecastResponse, dependencies=[Depends(rate_limit)])
 async def get_bed_forecast(
     hours: int = Query(default=24, ge=1, le=168),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_forecast)
 ):
     """Generates a predictive hourly forecast of bed occupancy for the specified number of hours."""
     try:
