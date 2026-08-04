@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timedelta
 from app.db import get_database, COLLECTION_PATIENT_EVENTS, COLLECTION_ICU_SNAPSHOTS, COLLECTION_ALERTS
 from app.schemas import LiveDashboardResponse, OperationalSnapshotResponse
-from app.auth import get_current_user
+from app.auth import get_current_user, get_current_active_user, require_operations
 from app.rate_limiter import rate_limit
 from app.cache import get_cached, set_cached
 
@@ -25,7 +25,7 @@ def _as_int(value, default=0):
         return default
 
 @router.get("/live", response_model=LiveDashboardResponse, dependencies=[Depends(rate_limit)])
-async def get_live_metrics(current_user: dict = Depends(get_current_user)):
+async def get_live_metrics(current_user: dict = Depends(get_current_active_user)):
     """Calculates live metrics for the last 60 minutes based on the latest event timestamp."""
     # Check cache first
     cached_val = get_cached("dashboard:live")
@@ -88,7 +88,7 @@ async def get_live_metrics(current_user: dict = Depends(get_current_user)):
     return res
 
 @router.get("/operations", response_model=OperationalSnapshotResponse, dependencies=[Depends(rate_limit)])
-async def get_operational_snapshot(current_user: dict = Depends(get_current_user)):
+async def get_operational_snapshot(current_user: dict = Depends(require_operations)):
     """Returns a control-tower view of the hospital event pipeline and live capacity posture."""
     db = get_database()
 
