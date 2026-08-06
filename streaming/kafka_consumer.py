@@ -5,7 +5,17 @@ from kafka.errors import NoBrokersAvailable
 
 # Constants
 KAFKA_BOOTSTRAP = "localhost:9092"
-TOPICS = ["patient-flow", "icu-status", "emergency-alerts"]
+TOPICS = [
+    "hospital.patient.emergency",
+    "hospital.patient.admission",
+    "hospital.patient.transfer",
+    "hospital.patient.discharge",
+    "hospital.resource.beds",
+    "hospital.resource.icu",
+    "hospital.resource.staff",
+    "hospital.resource.oxygen",
+    "hospital.resource.ventilator"
+]
 
 def run_consumer():
     print(f"Connecting standalone consumer to Kafka topics {TOPICS} on {KAFKA_BOOTSTRAP}...")
