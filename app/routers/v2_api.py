@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from typing import List, Dict, Any
 from datetime import datetime
 from app.db import (
@@ -8,19 +8,31 @@ from app.db import (
     COLLECTION_CAPACITY_METRICS,
     COLLECTION_PREDICTIONS,
     COLLECTION_ALERTS,
-    COLLECTION_RECOMMENDATIONS
+    COLLECTION_RECOMMENDATIONS,
+    COLLECTION_AUDIT_LOGS
 )
 from app.websocket_manager import manager
+from app.auth import (
+    get_current_user,
+    get_current_active_user,
+    require_admin,
+    require_operations,
+    require_analyst,
+    require_hospital_state,
+    require_resource_prediction,
+    require_anomalies,
+    require_alerts,
+    Role
+)
 
 router = APIRouter(tags=["v2_api"])
 
 @router.get("/hospital/state", response_model=Dict[str, Any])
-async def get_hospital_state():
-    """Retrieves the current Digital Twin state of the hospital."""
+async def get_hospital_state(current_user: dict = Depends(require_hospital_state)):
+    """Retrieves the current Digital Twin state of the hospital. Restricted to ADMIN, DOCTOR, OPERATIONS_MANAGER."""
     db = get_database()
     state = await db[COLLECTION_HOSPITAL_STATE].find_one({"_id": "current_state"})
     if not state:
-        # Return fallback placeholder if empty
         return {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "general_beds_occupied": 0,
@@ -43,8 +55,8 @@ async def get_hospital_state():
     return state
 
 @router.get("/capacity", response_model=Dict[str, Any])
-async def get_capacity_metrics():
-    """Retrieves the latest calculated Capacity Intelligence layer scores."""
+async def get_capacity_metrics(current_user: dict = Depends(require_operations)):
+    """Retrieves the latest calculated Capacity Intelligence layer scores. Restricted to ADMIN, OPERATIONS_MANAGER."""
     db = get_database()
     metrics = await db[COLLECTION_CAPACITY_METRICS].find_one({"_id": "current_metrics"})
     if not metrics:
@@ -81,8 +93,8 @@ async def get_capacity_metrics():
     return metrics
 
 @router.get("/prediction", response_model=Dict[str, Any])
-async def get_predictions():
-    """Retrieves the latest continuous demand and staffing forecasts."""
+async def get_predictions(current_user: dict = Depends(require_resource_prediction)):
+    """Retrieves continuous demand predictions. Restricted to ADMIN, OPERATIONS_MANAGER, DATA_ANALYST."""
     db = get_database()
     preds = await db[COLLECTION_PREDICTIONS].find_one({"_id": "current_predictions"})
     if not preds:
@@ -104,11 +116,17 @@ async def get_predictions():
         }
     preds.pop("_id", None)
     preds.pop("parsed_timestamp", None)
+    if not preds.get("forecast_24h"):
+        from app.ml.inference import forecast_beds
+        preds["forecast_24h"] = forecast_beds(24)
     return preds
 
 @router.get("/alerts", response_model=List[Dict[str, Any]])
-async def get_active_alerts(limit: int = Query(default=20, ge=1, le=100)):
-    """Retrieves active rule-based and AI-driven warnings."""
+async def get_active_alerts(
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: dict = Depends(require_alerts)
+):
+    """Retrieves active rule-based and AI-driven warnings. Restricted to ADMIN, DOCTOR, OPERATIONS_MANAGER."""
     db = get_database()
     cursor = db[COLLECTION_ALERTS].find().sort("timestamp", -1).limit(limit)
     alerts = await cursor.to_list(length=limit)
@@ -118,8 +136,11 @@ async def get_active_alerts(limit: int = Query(default=20, ge=1, le=100)):
     return alerts
 
 @router.get("/recommendations", response_model=List[Dict[str, Any]])
-async def get_active_recommendations(limit: int = Query(default=10, ge=1, le=50)):
-    """Retrieves current proactive operational recommendations."""
+async def get_active_recommendations(
+    limit: int = Query(default=10, ge=1, le=50),
+    current_user: dict = Depends(require_operations)
+):
+    """Retrieves current proactive operational recommendations. Restricted to ADMIN, OPERATIONS_MANAGER."""
     db = get_database()
     cursor = db[COLLECTION_RECOMMENDATIONS].find().sort("timestamp", -1).limit(limit)
     recs = await cursor.to_list(length=limit)
@@ -129,8 +150,8 @@ async def get_active_recommendations(limit: int = Query(default=10, ge=1, le=50)
     return recs
 
 @router.get("/evaluations", response_model=Dict[str, Any])
-async def get_evaluations():
-    """Retrieves the latest rolling prediction validation metrics."""
+async def get_evaluations(current_user: dict = Depends(require_analyst)):
+    """Retrieves the latest rolling prediction validation metrics. Restricted to ADMIN and DATA_ANALYST."""
     db = get_database()
     evals = await db["model_evaluations"].find_one({"_id": "current_evaluations"})
     if not evals:
@@ -140,8 +161,11 @@ async def get_evaluations():
     return evals
 
 @router.get("/anomalies", response_model=List[Dict[str, Any]])
-async def get_anomalies(limit: int = Query(default=20, ge=1, le=100)):
-    """Retrieves historical operational and statistical anomalies."""
+async def get_anomalies(
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: dict = Depends(require_anomalies)
+):
+    """Retrieves historical operational and statistical anomalies. Restricted to ADMIN, OPERATIONS_MANAGER, DATA_ANALYST."""
     db = get_database()
     cursor = db["anomalies"].find().sort("timestamp", -1).limit(limit)
     anoms = await cursor.to_list(length=limit)
@@ -151,8 +175,8 @@ async def get_anomalies(limit: int = Query(default=20, ge=1, le=100)):
     return anoms
 
 @router.get("/policies", response_model=Dict[str, Any])
-async def get_active_policy():
-    """Retrieves the active hospital optimization policy."""
+async def get_active_policy(current_user: dict = Depends(require_operations)):
+    """Retrieves the active hospital optimization policy. Restricted to ADMIN and OPERATIONS_MANAGER."""
     db = get_database()
     policy_doc = await db["hospital_configuration"].find_one({"_id": "active_policy"})
     if not policy_doc:
@@ -160,25 +184,62 @@ async def get_active_policy():
     return {"policy": policy_doc.get("policy", "DEFAULT")}
 
 @router.post("/policies", response_model=Dict[str, Any])
-async def set_active_policy(payload: Dict[str, str]):
-    """Sets the active hospital optimization policy ('DEFAULT', 'PRESERVE_ICU', 'MAXIMIZE_THROUGHPUT')."""
+async def set_active_policy(
+    payload: Dict[str, str],
+    current_user: dict = Depends(require_operations)
+):
+    """
+    Sets the active hospital optimization policy ('DEFAULT', 'PRESERVE_ICU', 'MAXIMIZE_THROUGHPUT').
+    Enforces authorization, input validation, and records an immutable audit log entry.
+    """
     db = get_database()
     policy = payload.get("policy", "DEFAULT").upper()
     if policy not in ["DEFAULT", "PRESERVE_ICU", "MAXIMIZE_THROUGHPUT"]:
-        raise HTTPException(status_code=400, detail="Invalid policy. Must be one of: DEFAULT, PRESERVE_ICU, MAXIMIZE_THROUGHPUT")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid policy. Must be one of: DEFAULT, PRESERVE_ICU, MAXIMIZE_THROUGHPUT"
+        )
+
+    # Fetch previous policy for audit trail
+    current_doc = await db["hospital_configuration"].find_one({"_id": "active_policy"})
+    old_policy = current_doc.get("policy", "DEFAULT") if current_doc else "DEFAULT"
+
     await db["hospital_configuration"].replace_one(
         {"_id": "active_policy"},
-        {"policy": policy},
+        {
+            "policy": policy,
+            "updated_by": current_user.get("email"),
+            "updated_at": datetime.utcnow().isoformat()
+        },
         upsert=True
     )
-    return {"status": "success", "policy": policy}
+
+    # Record security audit log
+    await db[COLLECTION_AUDIT_LOGS].insert_one({
+        "timestamp": datetime.now().strftime("%d-%m-%Y %H:%M"),
+        "parsed_timestamp": datetime.now(),
+        "event_type": "POLICY_CHANGED",
+        "user_id": current_user.get("id"),
+        "username": current_user.get("username"),
+        "email": current_user.get("email"),
+        "role": current_user.get("role"),
+        "old_policy": old_policy,
+        "new_policy": policy,
+        "action": "UPDATE_POLICY",
+        "status": "SUCCESS",
+        "details": f"Policy updated from {old_policy} to {policy} by {current_user.get('email')} ({current_user.get('role')})"
+    })
+
+    return {"status": "success", "policy": policy, "old_policy": old_policy}
 
 @router.post("/events", response_model=Dict[str, Any])
-async def ingest_manual_event(event_data: Dict[str, Any]):
-    """Manually ingests an operational event, updating the twin and trigger prediction pipelines."""
+async def ingest_manual_event(
+    event_data: Dict[str, Any],
+    current_user: dict = Depends(require_operations)
+):
+    """Manually ingests an operational event. Restricted to ADMIN and OPERATIONS_MANAGER."""
     try:
         from app.consumer import process_stream_update
-        # Process the event update in background/async
         await process_stream_update("API_INGESTION", event_data)
         return {"status": "success", "message": "Event processed successfully"}
     except Exception as e:
@@ -187,11 +248,22 @@ async def ingest_manual_event(event_data: Dict[str, Any]):
 # WebSocket route for live telemetry streaming
 @router.websocket("/live")
 async def websocket_live_dashboard(websocket: WebSocket):
-    """Establishes real-time push gateway for the glassmorphic dashboard."""
-    await manager.connect(websocket)
+    """Establishes authenticated real-time push gateway for the glassmorphic dashboard."""
+    user = await manager.authenticate_and_connect(websocket)
+    if not user:
+        return
+
+    # Immediately push latest authoritative state snapshot
+    try:
+        from app.consumer import get_latest_authoritative_payload
+        initial_payload = get_latest_authoritative_payload()
+        if initial_payload:
+            await manager.send_to_client(websocket, initial_payload)
+    except Exception as e:
+        print(f"Error sending initial state snapshot: {e}")
+
     try:
         while True:
-            # Maintain connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
