@@ -4,6 +4,13 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 # Import app
 from app.main import app
+from app.auth import get_current_user
+
+@pytest.fixture(autouse=True)
+def setup_v2_auth():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "admin@mediflow.ai", "role": "ADMIN", "is_active": True}
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 client = TestClient(app)
 
