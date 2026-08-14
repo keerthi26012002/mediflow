@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediFlow AI — Intelligent Hospital Capacity Management</title>
+    <meta name="description" content="AI-powered hospital capacity intelligence, predictive analytics, real-time alerts and operational decision support.">
+    <meta name="theme-color" content="#070d19">
+
+    <!-- Anti-FOUC Theme Initializer -->
+    <script>
+        (function() {
+            try {
+                const saved = localStorage.getItem('mediflow-theme');
+                const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Scoped Landing Stylesheet (TemplateMo 618 Adapted) -->
+    <link rel="stylesheet" href="/landing/landing.css">
+</head>
+<body class="landing-body">
+
+    <!-- ===== NAVIGATION ===== -->
+    <nav class="nav" role="navigation" aria-label="Main navigation">
+        <div class="nav-inner">
+            <a href="#hero" class="nav-logo" aria-label="MediFlow AI Home">
+                <div class="nav-logo-mark">M</div>
+                <div>
+                    <div>MEDIFLOW AI</div>
+                    <span class="nav-logo-sub">Capacity Intelligence</span>
+                </div>
+            </a>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#hero">Home</a></li>
+                <li><a href="#platform">Platform</a></li>
+                <li><a href="#ai-intelligence">AI Intelligence</a></li>
+                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#capacity">Capacity</a></li>
+                <li><a href="#rbac">RBAC</a></li>
+                <li><a href="#security">Security</a></li>
+                <li><a href="#faq">FAQ</a></li>
+            </ul>
+            <div class="nav-cta">
+                <button class="btn-theme-toggle" onclick="toggleLandingTheme()" aria-label="Toggle theme" title="Switch Theme">
+                    <span class="theme-icon">🌙</span>
+                    <span class="theme-text">Dark</span>
+                </button>
+                <a href="#platform" class="btn-ghost">Explore Platform</a>
+                <a href="/login" class="btn-acid">Access Dashboard</a>
+            </div>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- ===== SECTION 1: HERO ===== -->
+    <section class="hero" id="hero">
+        <div class="container">
+            <div class="hero-badge reveal">
+                <span class="hero-badge-dot"></span>
+                v3.0 — Real-Time Hospital Capacity Intelligence
+            </div>
+            <h1 class="reveal">Intelligent Hospital <span class="accent-word">Capacity Management</span></h1>
+            <p class="hero-sub reveal">Transform real-time hospital data into predictive insights, early warnings, and actionable operational intelligence across all care units.</p>
+            <div class="hero-actions reveal">
+                <a href="/login" class="btn-acid">
+                    Access Dashboard
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
+                <a href="#platform" class="btn-ghost">Explore Platform</a>
+            </div>
+
+            <!-- Dashboard Mockup Preview -->
+            <div class="hero-dashboard reveal">
+                <div class="dashboard-frame">
+                    <div class="dashboard-toolbar">
+                        <div class="dashboard-dots">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="dashboard-toolbar-tabs">
+                            <span class="active">Capacity Overview</span>
+                            <span>Multi-Horizon Forecast</span>
+                            <span>Digital Twin</span>
+                            <span>Alert Feeds</span>
+                        </div>
+                        <div style="font-size: 11px; font-weight: 700; color: var(--status-ok); display: flex; align-items: center; gap: 5px;">
+                            <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--status-ok);"></span> Live Stream
+                        </div>
+                    </div>
+                    <div class="dashboard-body">
+                        <!-- Key Hospital Capacity Stats -->
+                        <div class="dash-stats-grid">
+                            <div class="dash-stat-card">
+                                <div class="dash-stat-label">General Beds</div>
+                                <div class="dash-stat-value">78% <span style="font-size: 13px; color: var(--text-muted);">312/400</span></div>
+                                <div class="dash-progress-bar"><div class="dash-progress-fill" style="width: 78%; background: var(--accent);"></div></div>
+                                <div class="dash-stat-change ok">
+                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9V3M6 3L3 6M6 3L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                                    88 Available
+                                </div>
+                            </div>
+                            <div class="dash-stat-card">
+                                <div class="dash-stat-label">ICU Capacity</div>
+                                <div class="dash-stat-value">84% <span style="font-size: 13px; color: var(--text-muted);">42/50</span></div>
+                                <div class="dash-progress-bar"><div class="dash-progress-fill" style="width: 84%; background: var(--status-warn);"></div></div>
+                                <div class="dash-stat-change warn">
+                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9V3M6 3L3 6M6 3L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                                    8 Beds Free
+                                </div>
+                            </div>
+                            <div class="dash-stat-card">
+                                <div class="dash-stat-label">Oxygen Storage</div>
+                                <div class="dash-stat-value">63% <span style="font-size: 13px; color: var(--text-muted);">4.2 Bar</span></div>
+                                <div class="dash-progress-bar"><div class="dash-progress-fill" style="width: 63%; background: var(--accent-blue);"></div></div>
+                                <div class="dash-stat-change ok">Nominal Flow</div>
+                            </div>
+                            <div class="dash-stat-card">
+                                <div class="dash-stat-label">Ventilators</div>
+                                <div class="dash-stat-value">52% <span style="font-size: 13px; color: var(--text-muted);">13/25</span></div>
+                                <div class="dash-progress-bar"><div class="dash-progress-fill" style="width: 52%; background: var(--accent);"></div></div>
+                                <div class="dash-stat-change ok">12 Standby</div>
+                            </div>
+                            <div class="dash-stat-card">
+                                <div class="dash-stat-label">Hospital Load</div>
+                                <div class="dash-stat-value">72% <span style="font-size: 13px; color: var(--text-muted);">Index</span></div>
+                                <div class="dash-progress-bar"><div class="dash-progress-fill" style="width: 72%; background: var(--accent);"></div></div>
+                                <div class="dash-stat-change warn">Elevated Census</div>
+                            </div>
+                            <div class="dash-stat-card">
+                                <div class="dash-stat-label">Emergency Queue</div>
+                                <div class="dash-stat-value">18 <span style="font-size: 13px; color: var(--text-muted);">Patients</span></div>
+                                <div class="dash-progress-bar"><div class="dash-progress-fill" style="width: 68%; background: var(--status-warn);"></div></div>
+                                <div class="dash-stat-change warn">Avg Wait: 14m</div>
+                            </div>
+                        </div>
+
+                        <!-- Active Predictive Alert -->
+                        <div class="dash-alert-banner">
+                            <span class="dash-alert-icon">⚠</span>
+                            <div class="dash-alert-text">
+                                <strong>Predictive Trigger:</strong> ICU capacity trending upward — Horizon 1h forecast exceeds 85% threshold. Recommend holding elective transfers.
+                            </div>
+                        </div>
+
+                        <!-- Ward Status Table -->
+                        <div class="dash-table-area">
+                            <div class="dash-table-header">
+                                <span>Hospital Operations & Ward Status</span>
+                                <span style="color: var(--text-muted); font-size: 12px;">Refreshed via Digital Twin</span>
+                            </div>
+                            <div class="dash-table">
+                                <div class="dash-table-row head">
+                                    <div class="dash-cell">Ward / Unit</div>
+                                    <div class="dash-cell">Load</div>
+                                    <div class="dash-cell">Free Beds</div>
+                                    <div class="dash-cell">Key Telemetry</div>
+                                    <div class="dash-cell">Status</div>
+                                </div>
+                                <div class="dash-table-row">
+                                    <div class="dash-cell dash-cell-name">
+                                        <span class="dash-cell-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">ED</span>
+                                        Emergency Department
+                                    </div>
+                                    <div class="dash-cell">88%</div>
+                                    <div class="dash-cell">4</div>
+                                    <div class="dash-cell">18 Waiting Queue</div>
+                                    <div class="dash-cell"><span class="dash-status danger">Surge Alert</span></div>
+                                </div>
+                                <div class="dash-table-row">
+                                    <div class="dash-cell dash-cell-name">
+                                        <span class="dash-cell-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">ICU</span>
+                                        Intensive Care Unit
+                                    </div>
+                                    <div class="dash-cell">84%</div>
+                                    <div class="dash-cell">8</div>
+                                    <div class="dash-cell">13 Ventilators In-Use</div>
+                                    <div class="dash-cell"><span class="dash-status warn">High Warning</span></div>
+                                </div>
+                                <div class="dash-table-row">
+                                    <div class="dash-cell dash-cell-name">
+                                        <span class="dash-cell-icon" style="background: rgba(34, 197, 94, 0.15); color: #22c55e;">GEN</span>
+                                        General Inpatient Ward
+                                    </div>
+                                    <div class="dash-cell">78%</div>
+                                    <div class="dash-cell">88</div>
+                                    <div class="dash-cell">14 Discharges Today</div>
+                                    <div class="dash-cell"><span class="dash-status active">Optimal</span></div>
+                                </div>
+                                <div class="dash-table-row">
+                                    <div class="dash-cell dash-cell-name">
+                                        <span class="dash-cell-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">SUR</span>
+                                        Surgical Suite & Trauma
+                                    </div>
+                                    <div class="dash-cell">75%</div>
+                                    <div class="dash-cell">6/8 Active</div>
+                                    <div class="dash-cell">Full Shift Staffing</div>
+                                    <div class="dash-cell"><span class="dash-status info">Stable</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 2: GENUINE METRICS ===== -->
+    <section class="metrics" id="metrics">
+        <div class="container">
+            <p class="metrics-label reveal">System Architecture Telemetry</p>
+            <div class="metrics-grid">
+                <div class="metric-item reveal">
+                    <div class="metric-number">4<span class="metric-unit">Horizons</span></div>
+                    <p class="metric-desc">Continuous multi-horizon look-ahead forecasts across 30m, 1h, 6h, and 24h operational windows</p>
+                </div>
+                <div class="metric-item reveal">
+                    <div class="metric-number">11<span class="metric-unit">Targets</span></div>
+                    <p class="metric-desc">Comprehensive capacity signals tracking beds, ICU, staffing, oxygen, ventilators, and queues</p>
+                </div>
+                <div class="metric-item reveal">
+                    <div class="metric-number">4<span class="metric-unit">Roles</span></div>
+                    <p class="metric-desc">Granular RBAC access controls for Administrator, Doctor, Operations Manager, and Data Analyst</p>
+                </div>
+                <div class="metric-item reveal">
+                    <div class="metric-number">Real-Time<span class="metric-unit">Sync</span></div>
+                    <p class="metric-desc">Sub-second event streaming with Kafka, Digital Twin state memory, and WebSocket push</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 3: PLATFORM OVERVIEW (BENTO GRID) ===== -->
+    <section class="engine" id="platform" style="padding: var(--section-pad) 0;">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">Platform Overview</p>
+                <h2 class="section-title">Comprehensive Hospital Capacity Intelligence</h2>
+                <p class="section-sub" style="margin: 0 auto;">MediFlow AI unifies streaming events, machine learning models, and dynamic hospital policies into an operational control center.</p>
+            </div>
+            <div class="bento-grid">
+                <!-- Card 1 -->
+                <div class="card bento-card reveal">
+                    <div class="bento-card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    <h3>Real-Time Intelligence</h3>
+                    <p>Process streaming hospital admissions, ward transfers, and sensor telemetry the instant they occur. Maintain a live, authoritative operational state across all clinical facilities.</p>
+                    <div class="bento-card-visual">
+                        <div class="mini-badge-list">
+                            <span class="mini-badge-tag">Kafka Ingestion</span>
+                            <span class="mini-badge-tag">Digital Twin</span>
+                            <span class="mini-badge-tag">Sub-Second State</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 2 -->
+                <div class="card bento-card reveal">
+                    <div class="bento-card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    </div>
+                    <h3>AI Predictions</h3>
+                    <p>Predict future hospital resource requirements and acute patient admissions. Leverage dual-engine machine learning across 30-minute, 1-hour, 6-hour, and 24-hour time horizons.</p>
+                    <div class="bento-card-visual">
+                        <div class="mini-badge-list">
+                            <span class="mini-badge-tag">XGBoost Classifier</span>
+                            <span class="mini-badge-tag">Prophet Forecaster</span>
+                            <span class="mini-badge-tag">Multi-Horizon</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 3 -->
+                <div class="card bento-card reveal">
+                    <div class="bento-card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="8"/><rect x="13" y="6" width="3" height="12"/><rect x="19" y="13" width="3" height="5"/></svg>
+                    </div>
+                    <h3>Capacity Intelligence</h3>
+                    <p>Monitor inpatient beds, ICU availability, clinical staffing, oxygen storage pressure, mechanical ventilators, emergency queues, and composite hospital load in unified telemetry.</p>
+                    <div class="bento-card-visual">
+                        <div class="mini-indicators">
+                            <div class="mini-indicator-bar" style="height: 60%;"></div>
+                            <div class="mini-indicator-bar accent" style="height: 84%;"></div>
+                            <div class="mini-indicator-bar" style="height: 52%;"></div>
+                            <div class="mini-indicator-bar accent" style="height: 72%;"></div>
+                            <div class="mini-indicator-bar" style="height: 63%;"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 4 -->
+                <div class="card bento-card reveal">
+                    <div class="bento-card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    </div>
+                    <h3>Predictive Alerts</h3>
+                    <p>Identify emerging operational bottlenecks and patient surge risks before they become critical. Rule-based triggers and predictive thresholding prevent department overload.</p>
+                    <div class="bento-card-visual">
+                        <div class="mini-badge-list">
+                            <span class="mini-badge-tag">Overload Warning</span>
+                            <span class="mini-badge-tag">ICU Surge</span>
+                            <span class="mini-badge-tag">Alert Suppression</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 5 -->
+                <div class="card bento-card reveal">
+                    <div class="bento-card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    </div>
+                    <h3>Decision Support</h3>
+                    <p>Generate actionable operational recommendations using active hospital policies (Default Optimization, Preserve ICU Capacity, Maximize Throughput) and current census conditions.</p>
+                    <div class="bento-card-visual">
+                        <div class="mini-badge-list">
+                            <span class="mini-badge-tag">Policy Engine</span>
+                            <span class="mini-badge-tag">Automated Actions</span>
+                            <span class="mini-badge-tag">Triage Guidance</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 6 -->
+                <div class="card bento-card reveal">
+                    <div class="bento-card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <h3>Secure Workflows</h3>
+                    <p>Provide role-specific access controls for administrators, doctors, operations managers, and data analysts. Server-side authorization ensures strict boundaries and verifiable audit logging.</p>
+                    <div class="bento-card-visual">
+                        <div class="mini-badge-list">
+                            <span class="mini-badge-tag">Role-Based Workspaces</span>
+                            <span class="mini-badge-tag">Audit Trails</span>
+                            <span class="mini-badge-tag">Server-Side Auth</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 4: AI INTELLIGENCE ===== -->
+    <section class="ai-section" id="ai-intelligence">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">Machine Learning Engine</p>
+                <h2 class="section-title">AI-Powered Hospital Intelligence</h2>
+                <p class="section-sub" style="margin: 0 auto;">Dual-model intelligence combining gradient-boosted classification with additive time-series forecasting, continuous validation, and policy orchestration.</p>
+            </div>
+            <div class="ai-grid">
+                <div class="ai-card reveal">
+                    <span class="ai-card-badge">Classification</span>
+                    <h3>XGBoost Machine Learning</h3>
+                    <p>Trained on multi-variate clinical and demographic indicators to predict emergency admission probability and triage acuity scoring with sub-millisecond inference.</p>
+                </div>
+                <div class="ai-card reveal">
+                    <span class="ai-card-badge">Forecasting</span>
+                    <h3>Prophet Time-Series Engine</h3>
+                    <p>Decomposable additive model accounting for hourly surges, daily hospital cycles, and seasonal shifts to forecast bed demand over 30m, 1h, 6h, and 24h horizons.</p>
+                </div>
+                <div class="ai-card reveal">
+                    <span class="ai-card-badge">Safety</span>
+                    <h3>Operational Anomaly Detection</h3>
+                    <p>Statistical divergence analysis continuously monitoring ward census, queue growth, and sensor readings to immediately detect abnormal operational shifts.</p>
+                </div>
+                <div class="ai-card reveal">
+                    <span class="ai-card-badge">MLOps</span>
+                    <h3>Prediction Validation</h3>
+                    <p>Live error-tracking telemetry computing Rolling 24h Mean Absolute Error (MAE), admission classification F1-scores, and latency telemetry to guarantee reliability.</p>
+                </div>
+                <div class="ai-card reveal">
+                    <span class="ai-card-badge">Synthesis</span>
+                    <h3>Capacity Intelligence Engine</h3>
+                    <p>Fuses discrete sensor signals into composite indices including Hospital Load (0-100%), Surge Vulnerability Index, and Overall Readiness Score.</p>
+                </div>
+                <div class="ai-card reveal">
+                    <span class="ai-card-badge">Governance</span>
+                    <h3>Dynamic Policy Engine</h3>
+                    <p>Executes configurable hospital policies (Preserve ICU Capacity, Maximize Throughput, Default) to generate concrete, auditable operational interventions.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 5: HOW MEDIFLOW WORKS (ARCHITECTURE FLOW) ===== -->
+    <section class="arch-section" id="architecture">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">System Architecture</p>
+                <h2 class="section-title">How MediFlow Works</h2>
+                <p class="section-sub" style="margin: 0 auto;">An enterprise-grade, distributed pipeline streaming hospital telemetry from event inception to role-specific decision workspaces.</p>
+            </div>
+            <div class="pipeline-flow">
+                <div class="pipeline-node reveal">
+                    <div class="pipeline-step">01</div>
+                    <div class="pipeline-content">
+                        <div class="pipeline-title">Hospital Events & Clinical Telemetry</div>
+                        <div class="pipeline-desc">Real-time ingestion of patient arrivals, discharges, bed reassignments, vitals, and ward sensor telemetry.</div>
+                    </div>
+                </div>
+                <div class="pipeline-node reveal">
+                    <div class="pipeline-step">02</div>
+                    <div class="pipeline-content">
+                        <div class="pipeline-title">Kafka Streaming Pipeline</div>
+                        <div class="pipeline-desc">High-throughput, distributed event streaming topic decoupling producers from downstream processing consumers.</div>
+                    </div>
+                </div>
+                <div class="pipeline-node reveal">
+                    <div class="pipeline-step">03</div>
+                    <div class="pipeline-content">
+                        <div class="pipeline-title">Digital Twin State Memory</div>
+                        <div class="pipeline-desc">Authoritative in-memory simulation tracking real-time facility occupancy, resource allocations, and queue dynamics.</div>
+                    </div>
+                </div>
+                <div class="pipeline-node reveal">
+                    <div class="pipeline-step">04</div>
+                    <div class="pipeline-content">
+                        <div class="pipeline-title">MongoDB Persistence + Redis High-Speed Cache</div>
+                        <div class="pipeline-desc">Dual storage architecture: MongoDB stores historical event audits and user records while Redis delivers microsecond state lookups.</div>
+                    </div>
+                </div>
+                <div class="pipeline-node reveal">
+                    <div class="pipeline-step">05</div>
+                    <div class="pipeline-content">
+                        <div class="pipeline-title">AI / ML Intelligence (XGBoost + Prophet)</div>
+                        <div class="pipeline-desc">Predictive modeling generates acute admission probabilities and multi-horizon bed occupancy demand.</div>
+                    </div>
+                </div>
+                <div class="pipeline-node reveal">
+                    <div class="pipeline-step">06</div>
+                    <div class="pipeline-content">
+                        <div class="pipeline-title">Anomaly Detection, Alerts & Recommendations</div>
+                        <div class="pipeline-desc">Operational outlier detection flags bottlenecks and policy engine generates prioritized interventions.</div>
+                    </div>
+                </div>
+                <div class="pipeline-node reveal">
+                    <div class="pipeline-step">07</div>
+                    <div class="pipeline-content">
+                        <div class="pipeline-title">Secure WebSocket Gateway & MediFlow Control Center</div>
+                        <div class="pipeline-desc">Token-authenticated live push streams update the responsive dashboard and role-tailored workspaces.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 6: MULTI-HORIZON PREDICTIONS ===== -->
+    <section class="horizons-section" id="horizons">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">Predictive Capabilities</p>
+                <h2 class="section-title">Multi-Horizon Hospital Forecasting</h2>
+                <p class="section-sub" style="margin: 0 auto;">Operational challenges evolve across distinct timeframes. MediFlow provides tailored forecasts tailored to each operational window.</p>
+            </div>
+            <div class="horizons-grid">
+                <div class="horizon-card reveal">
+                    <div class="horizon-time">30m</div>
+                    <div class="horizon-title">Triage & Rapid Intake</div>
+                    <p class="horizon-desc">Forecasts immediate ambulance arrivals, acute emergency department bottlenecks, and fast-track triage assignments.</p>
+                </div>
+                <div class="horizon-card reveal">
+                    <div class="horizon-time">1h</div>
+                    <div class="horizon-title">Acuity & ICU Staging</div>
+                    <p class="horizon-desc">Anticipates near-term ICU bed demand, mechanical ventilator allocation, and critical-care nurse staffing adjustments.</p>
+                </div>
+                <div class="horizon-card reveal">
+                    <div class="horizon-time">6h</div>
+                    <div class="horizon-title">Shift Transitions & Flow</div>
+                    <p class="horizon-desc">Assists nursing supervisors and charge doctors with shift turnover planning, elective surgery staging, and transfer holds.</p>
+                </div>
+                <div class="horizon-card reveal">
+                    <div class="horizon-time">24h</div>
+                    <div class="horizon-title">Facility Census & Logistics</div>
+                    <p class="horizon-desc">Provides hospital leadership with census balancing, medical oxygen reservoir staging, and overall readiness forecasts.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 7: CAPACITY INTELLIGENCE ===== -->
+    <section class="capacity-section" id="capacity">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">Capacity Layer</p>
+                <h2 class="section-title">Holistic Hospital Capacity Intelligence</h2>
+                <p class="section-sub" style="margin: 0 auto;">MediFlow doesn't only predict individual numbers; it synthesizes multi-dimensional signals into actionable operational clarity.</p>
+            </div>
+            <div class="capacity-grid reveal">
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Bed Utilization</div>
+                    <div class="capacity-card-val">78%</div>
+                    <div class="capacity-card-note">312 / 400 Inpatient Beds</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">ICU Utilization</div>
+                    <div class="capacity-card-val">84%</div>
+                    <div class="capacity-card-note">42 / 50 Critical Beds</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Staff Utilization</div>
+                    <div class="capacity-card-val">88%</div>
+                    <div class="capacity-card-note">Optimal Clinical Ratios</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Oxygen Utilization</div>
+                    <div class="capacity-card-val">63%</div>
+                    <div class="capacity-card-note">4.2 Bar Storage Nominal</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Ventilator Pressure</div>
+                    <div class="capacity-card-val">52%</div>
+                    <div class="capacity-card-note">13 Active / 12 Standby</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Emergency Pressure</div>
+                    <div class="capacity-card-val">88%</div>
+                    <div class="capacity-card-note">Peak ED Inflow Window</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Waiting Queue</div>
+                    <div class="capacity-card-val">18</div>
+                    <div class="capacity-card-note">Patients Awaiting Ward</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Hospital Load</div>
+                    <div class="capacity-card-val">72%</div>
+                    <div class="capacity-card-note">Facility Stress Index</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Surge Index</div>
+                    <div class="capacity-card-val">1.24</div>
+                    <div class="capacity-card-note">Moderate Inflow Trend</div>
+                </div>
+                <div class="capacity-card">
+                    <div class="capacity-card-title">Hospital Readiness</div>
+                    <div class="capacity-card-val">91%</div>
+                    <div class="capacity-card-note">Operational Resilience</div>
+                </div>
+            </div>
+            <div class="capacity-callout reveal">
+                &ldquo;MediFlow AI combines operational signals, queue velocities, and predictive forecasts into a unified measure of hospital capacity and stress.&rdquo;
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 8: ROLE-BASED ACCESS CONTROL (REPLACING PRICING) ===== -->
+    <section class="rbac-section" id="rbac">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">Role-Based Access Control</p>
+                <h2 class="section-title">Built for Every Hospital Role</h2>
+                <p class="section-sub" style="margin: 0 auto;">Every clinical and operational role receives a specialized workspace with granular permissions and tailored workflows.</p>
+            </div>
+            <div class="rbac-grid">
+                <!-- Administrator -->
+                <div class="card rbac-card reveal">
+                    <span class="rbac-badge">Governance</span>
+                    <div class="rbac-role-name">Administrator</div>
+                    <div class="rbac-role-subtitle">Governance & Security</div>
+                    <ul class="rbac-features">
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            User management & credential provisioning
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Comprehensive immutable audit logs
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            System administration & telemetry
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Policy governance & override oversight
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            System-wide operational oversight
+                        </li>
+                    </ul>
+                    <a href="/login" class="btn-ghost">Launch Workspace</a>
+                </div>
+
+                <!-- Doctor -->
+                <div class="card rbac-card featured reveal">
+                    <span class="rbac-badge">Clinical</span>
+                    <div class="rbac-role-name">Doctor</div>
+                    <div class="rbac-role-subtitle">Clinical Intelligence</div>
+                    <ul class="rbac-features">
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Admission probability predictions
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Live ICU bed availability & staging status
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Prioritized clinical alerts & warnings
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Relevant patient-flow intelligence
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Triage assessment & bed assignment
+                        </li>
+                    </ul>
+                    <a href="/login" class="btn-acid">Launch Workspace</a>
+                </div>
+
+                <!-- Operations Manager -->
+                <div class="card rbac-card reveal">
+                    <span class="rbac-badge">Operations</span>
+                    <div class="rbac-role-name">Operations Mgr</div>
+                    <div class="rbac-role-subtitle">Hospital Operations</div>
+                    <ul class="rbac-features">
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Facility-wide capacity monitoring
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Resource intelligence (Oxygen, Staff, Vents)
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Operational alert & suppression control
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Policy execution & recommendations
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Emergency event streaming log
+                        </li>
+                    </ul>
+                    <a href="/login" class="btn-ghost">Launch Workspace</a>
+                </div>
+
+                <!-- Data Analyst -->
+                <div class="card rbac-card reveal">
+                    <span class="rbac-badge">Analytics</span>
+                    <div class="rbac-role-name">Data Analyst</div>
+                    <div class="rbac-role-subtitle">Analytics & MLOps</div>
+                    <ul class="rbac-features">
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Multi-horizon Prophet forecasts
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Model performance telemetry (MAE, F1)
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Continuous prediction validation
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Anomaly detection & outlier inspection
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 18 18" fill="none"><path d="M4 9l3.5 3.5L14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Historical trend analysis & exports
+                        </li>
+                    </ul>
+                    <a href="/login" class="btn-ghost">Launch Workspace</a>
+                </div>
+            </div>
+            <p class="rbac-notice reveal">Every role receives a dedicated workspace and only authorized resources are accessible.</p>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 9: SECURITY ===== -->
+    <section class="security-section" id="security">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">Security Architecture</p>
+                <h2 class="section-title">Zero-Trust Enterprise Governance</h2>
+                <p class="section-sub" style="margin: 0 auto;">Designed to safeguard patient privacy and hospital infrastructure with strict boundary enforcement.</p>
+            </div>
+
+            <!-- Mandatory Architecture Callout Banner -->
+            <div class="security-boundary-banner reveal">
+                <h3>Backend Security Boundary</h3>
+                <p>&ldquo;MediFlow enforces authorization at the backend API level. Frontend visibility is used for user experience, while the server remains the security boundary.&rdquo;</p>
+            </div>
+
+            <div class="security-grid">
+                <div class="security-card reveal">
+                    <div class="security-card-icon">🔑</div>
+                    <h3>JWT Authentication</h3>
+                    <p>Cryptographically signed HS256 JSON Web Tokens with configurable expiration, secure cookie storage, and automated token refresh workflows.</p>
+                </div>
+                <div class="security-card reveal">
+                    <div class="security-card-icon">🛡</div>
+                    <h3>Server-Side Authorization</h3>
+                    <p>Strict FastAPI dependency overrides verify active role claims at the route handler level before any operational data is returned.</p>
+                </div>
+                <div class="security-card reveal">
+                    <div class="security-card-icon">🔒</div>
+                    <h3>Protected REST APIs</h3>
+                    <p>All sensitive operational endpoints, user records, and policy controls require valid bearer credentials and reject unauthorized requests with HTTP 401/403.</p>
+                </div>
+                <div class="security-card reveal">
+                    <div class="security-card-icon">📜</div>
+                    <h3>Comprehensive Audit Logging</h3>
+                    <p>All administrative actions, policy shifts, and emergency alerts generate immutable audit records stored with actor, timestamp, and context details.</p>
+                </div>
+                <div class="security-card reveal">
+                    <div class="security-card-icon">⚡</div>
+                    <h3>Authenticated WebSockets</h3>
+                    <p>Live alert feeds verify JWT session tokens during connection handshake, ensuring only authorized clinical staff receive real-time broadcasts.</p>
+                </div>
+                <div class="security-card reveal">
+                    <div class="security-card-icon">👥</div>
+                    <h3>Role-Specific Workflows</h3>
+                    <p>Granular RBAC ensures doctors only view clinical workflows, analysts view MLOps, and only administrators manage user provisioning.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 10: FAQ ===== -->
+    <section class="faq" id="faq">
+        <div class="container">
+            <div class="section-header reveal">
+                <p class="section-tag">Frequently Asked Questions</p>
+                <h2 class="section-title">Common Questions, Clear Answers</h2>
+            </div>
+            <div class="faq-controls reveal">
+                <button class="faq-ctrl-btn" id="faqExpandAll">Expand All</button>
+                <button class="faq-ctrl-btn" id="faqCollapseAll">Collapse All</button>
+            </div>
+            <div class="faq-list">
+                <div class="faq-item reveal">
+                    <button class="faq-question" aria-expanded="false">
+                        What is MediFlow AI?
+                        <span class="faq-icon"><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">MediFlow AI is a real-time hospital capacity intelligence and decision-support platform designed to transform streaming operational data into predictive insights, early warnings, and actionable resource intelligence.</div>
+                    </div>
+                </div>
+                <div class="faq-item reveal">
+                    <button class="faq-question" aria-expanded="false">
+                        What can MediFlow predict?
+                        <span class="faq-icon"><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">The platform supports continuous multi-horizon predictions across 30-minute, 1-hour, 6-hour, and 24-hour windows for inpatient bed utilization, ICU occupancy, patient admission probabilities, emergency queue surges, and resource bottlenecks.</div>
+                    </div>
+                </div>
+                <div class="faq-item reveal">
+                    <button class="faq-question" aria-expanded="false">
+                        How does MediFlow process real-time information?
+                        <span class="faq-icon"><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">Hospital events (admissions, discharges, ward transfers, and sensor readings) are streamed asynchronously through Apache Kafka into an in-memory Digital Twin state engine, MongoDB database, and Redis cache for sub-second intelligence.</div>
+                    </div>
+                </div>
+                <div class="faq-item reveal">
+                    <button class="faq-question" aria-expanded="false">
+                        What roles can use MediFlow?
+                        <span class="faq-icon"><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">MediFlow includes tailored Role-Based Access Control (RBAC) workspaces for Administrators (governance and user control), Doctors (clinical admissions and ICU triage), Operations Managers (capacity and policy management), and Data Analysts (forecasts and MLOps).</div>
+                    </div>
+                </div>
+                <div class="faq-item reveal">
+                    <button class="faq-question" aria-expanded="false">
+                        Does MediFlow provide real-time updates?
+                        <span class="faq-icon"><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">Yes. The authenticated MediFlow dashboard connects to a secure WebSocket gateway (<code>/ws/alerts</code>) that pushes real-time overload warnings, admission notifications, and anomaly detections directly to active users.</div>
+                    </div>
+                </div>
+                <div class="faq-item reveal">
+                    <button class="faq-question" aria-expanded="false">
+                        Does MediFlow replace clinical decision-making?
+                        <span class="faq-icon"><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">No. MediFlow is designed strictly as an operational intelligence and clinical decision-support platform. It assists healthcare teams with foresight, resource planning, and early warnings, but does not replace qualified clinical judgment.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 11: CALL TO ACTION ===== -->
+    <section class="cta-banner" id="cta">
+        <div class="container">
+            <div class="cta-banner-inner reveal">
+                <p class="cta-banner-tag">Operational Control Center</p>
+                <h2>Ready to explore MediFlow AI?</h2>
+                <p>Experience real-time hospital capacity intelligence, predictive insights, alerts and decision support.</p>
+                <div class="cta-banner-actions">
+                    <a href="/login" class="btn-acid">
+                        Access Dashboard
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SECTION 12: FOOTER ===== -->
+    <footer class="footer" id="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <a href="#hero" class="nav-logo" aria-label="MediFlow AI Home">
+                        <div class="nav-logo-mark">M</div>
+                        <div>
+                            <div>MEDIFLOW AI</div>
+                            <span class="nav-logo-sub">Capacity Intelligence</span>
+                        </div>
+                    </a>
+                    <p class="footer-brand-desc">Hospital Capacity Intelligence & Decision Support. Transforming streaming clinical data into predictive foresight and operational resilience.</p>
+                </div>
+                <div>
+                    <h4 class="footer-col-title">Platform</h4>
+                    <ul class="footer-links">
+                        <li><a href="#platform">Real-Time Intelligence</a></li>
+                        <li><a href="#ai-intelligence">AI Forecasting</a></li>
+                        <li><a href="#capacity">Capacity Telemetry</a></li>
+                        <li><a href="#architecture">Architecture Flow</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="footer-col-title">Governance</h4>
+                    <ul class="footer-links">
+                        <li><a href="#rbac">Role-Based Access</a></li>
+                        <li><a href="#security">Security & Auth</a></li>
+                        <li><a href="#security">Audit Trails</a></li>
+                        <li><a href="#faq">Platform FAQ</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="footer-col-title">Access</h4>
+                    <ul class="footer-links">
+                        <li><a href="/login">Clinical Login</a></li>
+                        <li><a href="/login">Operations Login</a></li>
+                        <li><a href="/login">Analyst Workspace</a></li>
+                        <li><a href="/login">Admin Governance</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p class="footer-copy">&copy; 2026 MediFlow AI. All rights reserved. Hospital Capacity Intelligence & RBAC Control.</p>
+                <div style="font-size: 12px; color: var(--text-dim);">Designed with TemplateMo 618 Catalyst Architectural Aesthetics</div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Isolated Landing Page JS -->
+    <script src="/landing/landing.js"></script>
+
+</body>
+</html>
