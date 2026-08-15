@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediFlow AI — Sign In & RBAC Control Center</title>
+  <link rel="stylesheet" href="/style.css">
+  <!-- Anti-FOUC Theme Initializer -->
+  <script>
+    (function() {
+      try {
+        const saved = localStorage.getItem('mediflow-theme');
+        const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- ==================== LOGIN SCREEN ==================== -->
+  <div id="login-screen" class="login-screen">
+    <!-- Top Navigation Bar for Login -->
+    <div style="position: absolute; top: 1.5rem; left: 1.5rem; z-index: 10;">
+      <a href="/" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.45rem 0.9rem; border-radius: 8px; background: var(--panel-subtle); border: 1px solid var(--card-border); color: var(--text-secondary); font-size: 0.82rem; font-weight: 600; text-decoration: none; transition: var(--transition-smooth);">
+        ← Back to Overview
+      </a>
+    </div>
+    <div style="position: absolute; top: 1.5rem; right: 1.5rem; z-index: 10;">
+      <button class="theme-toggle-btn" id="login-theme-toggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme" title="Switch Theme">
+        <span class="theme-toggle-icon">🌙</span>
+        <span class="theme-toggle-text">Dark Mode</span>
+      </button>
+    </div>
+
+    <div class="login-panel">
+      <div class="login-brand">
+        <div class="logo-glow">M</div>
+        <div>
+          <h1>MediFlow AI</h1>
+          <p>Hospital Operations & Capacity Intelligence (v3.0)</p>
+        </div>
+      </div>
+
+      <form class="login-form" id="login-form" onsubmit="handleLoginSubmit(event)">
+        <label>
+          Email Address
+          <input type="email" id="login-email" required placeholder="name@mediflow.ai" value="admin@mediflow.ai">
+        </label>
+
+        <label>
+          Password
+          <input type="password" id="login-password" required placeholder="••••••••" value="mediflow123">
+        </label>
+
+        <div class="login-error" id="login-error"></div>
+
+        <button type="submit" id="login-btn">Sign In to Control Center</button>
+      </form>
+
+      <div style="margin-top: 1.25rem; border-top: 1px solid var(--card-border); padding-top: 1rem;">
+        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem;">Quick Role Demo Logins:</div>
+        <div class="quick-login-grid">
+          <button type="button" class="quick-login-btn" onclick="quickFillLogin('admin@mediflow.ai', 'mediflow123')">
+            <strong>Administrator</strong>
+            <span>Full System & RBAC</span>
+          </button>
+          <button type="button" class="quick-login-btn" onclick="quickFillLogin('doctor@mediflow.ai', 'mediflow123')">
+            <strong>Doctor</strong>
+            <span>Clinical & Triage</span>
+          </button>
+          <button type="button" class="quick-login-btn" onclick="quickFillLogin('ops@mediflow.ai', 'mediflow123')">
+            <strong>Operations Mgr</strong>
+            <span>Capacity & Policies</span>
+          </button>
+          <button type="button" class="quick-login-btn" onclick="quickFillLogin('analyst@mediflow.ai', 'mediflow123')">
+            <strong>Data Analyst</strong>
+            <span>Models & Anomalies</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    function getStoredTheme() {
+      try {
+        const saved = localStorage.getItem("mediflow-theme");
+        if (saved === "light" || saved === "dark") return saved;
+      } catch (e) {}
+      return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    }
+
+    function applyTheme(theme, save = true) {
+      document.documentElement.setAttribute("data-theme", theme);
+      if (save) {
+        try { localStorage.setItem("mediflow-theme", theme); } catch (e) {}
+      }
+      const isDark = theme === "dark";
+      const icon = isDark ? "🌙" : "☀️";
+      const label = isDark ? "Dark Mode" : "Light Mode";
+      const title = isDark ? "Switch to Light Mode" : "Switch to Dark Mode";
+
+      document.querySelectorAll(".theme-toggle-btn").forEach(btn => {
+        const iconEl = btn.querySelector(".theme-toggle-icon");
+        const textEl = btn.querySelector(".theme-toggle-text");
+        if (iconEl) iconEl.innerText = icon;
+        if (textEl) textEl.innerText = label;
+        btn.title = title;
+        btn.setAttribute("aria-label", title);
+      });
+    }
+
+    window.toggleTheme = function() {
+      const current = document.documentElement.getAttribute("data-theme") || getStoredTheme();
+      const next = current === "dark" ? "light" : "dark";
+      applyTheme(next, true);
+    };
+
+    window.quickFillLogin = function(email, password) {
+      const emailInput = document.getElementById("login-email");
+      const passwordInput = document.getElementById("login-password");
+      const errorEl = document.getElementById("login-error");
+      if (emailInput) emailInput.value = email;
+      if (passwordInput) passwordInput.value = password;
+      if (errorEl) errorEl.innerText = "";
+      handleLoginSubmit();
+    };
+
+    window.handleLoginSubmit = async function(event) {
+      if (event && event.preventDefault) {
+        event.preventDefault();
+      }
+      const emailInput = document.getElementById("login-email");
+      const passwordInput = document.getElementById("login-password");
+      const errorEl = document.getElementById("login-error");
+      const btn = document.getElementById("login-btn");
+
+      if (!emailInput || !passwordInput) return;
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (errorEl) errorEl.innerText = "";
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = "Authenticating...";
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          if (errorEl) errorEl.innerText = data.detail || "Invalid login credentials.";
+          if (btn) {
+            btn.disabled = false;
+            btn.innerText = "Sign In to Control Center";
+          }
+          return;
+        }
+
+        localStorage.setItem("mediflow_token", data.access_token);
+        window.location.href = "/dashboard";
+      } catch (err) {
+        if (errorEl) errorEl.innerText = "Connection error. Ensure backend server is running.";
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = "Sign In to Control Center";
+        }
+      }
+    };
+
+    // Auto check if already authenticated
+    document.addEventListener("DOMContentLoaded", async () => {
+      applyTheme(getStoredTheme(), false);
+      const token = localStorage.getItem("mediflow_token");
+      if (token) {
+        try {
+          const res = await fetch(`${API_BASE}/auth/me`, {
+            headers: { "Authorization": `Bearer ${token}` },
+            credentials: "include"
+          });
+          if (res.ok) {
+            window.location.href = "/dashboard";
+          }
+        } catch (e) {}
+      }
+    });
+  </script>
+</body>
+</html>
