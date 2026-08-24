@@ -22,3 +22,7 @@ flowchart TD
 2. **Authoritative Digital Twin**: In-memory operational twin capturing live emergency room queues, ICU load, and ventilator usage.
 3. **ML Inference Engine**: Multi-horizon XGBoost models combined with Prophet time-series models for 24-hour forecasting.
 4. **WebSocket & Alert Bus**: Monotonic sequence-guarded WebSocket broadcaster streaming real-time telemetry to subscribed role-authorized clients.
+
+
+## Data Flow & Event Bus
+Telemetry flows through Kafka topics into the authoritative digital twin with atomic state locking.
