@@ -12,3 +12,7 @@
 ## Caching Strategy
 - Prophet forecasting models are computationally intensive.
 - A 300-second / 30-tick TTL cache (\pp/consumer.py\) ensures real-time sub-10ms response times for stream updates while regenerating forecasts every 5 minutes.
+
+
+## Model Tuning & Hyperparameters
+Prophet models use additive yearly seasonality with multiplicative weekly regressors.
