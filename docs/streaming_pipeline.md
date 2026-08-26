@@ -5,3 +5,7 @@
 - **Consumer**: Aggregates batch events per coherent tick, updates the Digital Twin, and runs atomic ML inference under an asynchronous mutex lock.
 - **Deduplication**: Monotonic sequence tracking prevents out-of-order execution or duplicate pipeline triggers across Kafka partitions.
 - **Pruning**: Automated collection pruning limits historical MongoDB collections to 1,000 documents per collection.
+
+
+## Partition Strategy & Consumer Groups
+Kafka topics partition on patient hospital unit IDs to ensure sequential ordering per ward.
