@@ -11,3 +11,7 @@ MediFlow AI combines a high-performance Glassmorphic Dashboard with the elegant 
    - Monotonic sequence guard preventing UI flickers.
    - Chart.js 24-hour occupancy & patient inflow live streaming.
    - High-precision telemetry gauges and triage risk indicators.
+
+
+## Glassmorphic Theme Palette
+Defines frosted glass translucent backgrounds with CSS backdrop-filter blur(16px).
