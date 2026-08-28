@@ -11,3 +11,7 @@
 - **Memory & Resource Utilization**:
   - Memory Footprint (FastAPI + Twin): ~185 MB
   - CPU Utilization during continuous streaming: < 4%
+
+
+## High Concurrency WebSocket Scaling
+Tested up to 5,000 concurrent client connections without dropping websocket frames.
