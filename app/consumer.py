@@ -58,6 +58,14 @@ _digital_twin_state = {
     "current_transfers": 2
 }
 _state_lock = threading.Lock()
+_inference_lock = None  # Initialized on loop startup
+
+# Monotonic sequence tracker & Prophet cache
+_stream_sequence = 0
+_cached_prophet_forecast = None
+_last_prophet_run_time = 0.0
+_last_prophet_tick = -1
+_latest_authoritative_payload = {}
 
 # Lazy-loaded Kafka Producer to publish predictions and alerts
 _kafka_producer = None
@@ -81,322 +89,512 @@ def get_kafka_producer():
                     _kafka_producer = False
     return _kafka_producer if _kafka_producer else None
 
+def get_authoritative_state() -> dict:
+    with _state_lock:
+        return _digital_twin_state.copy()
+
+def get_latest_authoritative_payload() -> dict:
+    global _latest_authoritative_payload
+    if _latest_authoritative_payload:
+        return _latest_authoritative_payload
+    with _state_lock:
+        state_copy = _digital_twin_state.copy()
+    return {
+        "sequence": _stream_sequence,
+        "tick_id": _stream_sequence,
+        "timestamp": state_copy.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        "digital_twin": state_copy,
+        "capacity_metrics": {},
+        "predictions": {},
+        "forecast": [],
+        "alerts": [],
+        "recommendations": [],
+        "anomalies": [],
+        "evaluations": {},
+        "active_policy": "DEFAULT",
+        "last_updated": datetime.now().isoformat()
+    }
+
+def parse_timestamp(timestamp_str: str) -> datetime:
+    if not timestamp_str:
+        return datetime.now()
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(str(timestamp_str).strip(), fmt)
+        except (ValueError, TypeError):
+            pass
+    return datetime.now()
+
+def update_digital_twin_from_event(event_source: str, data: dict, timestamp_str: str) -> dict:
+    """Updates the thread-safe Digital Twin state from any incoming event."""
+    global _digital_twin_state
+    with _state_lock:
+        _digital_twin_state["timestamp"] = timestamp_str
+
+        # Emergency Arrival
+        if "emergency" in event_source.lower() or "patient_id" in data:
+            _digital_twin_state["patients_waiting"] += 1
+            if data.get("arrival_mode") == "Ambulance":
+                _digital_twin_state["ambulances_active"] += 1
+
+            for key in ["general_beds_available", "icu_beds_available", "doctor_availability", "nurse_availability", "oxygen_utilization", "ventilator_availability"]:
+                if key in data:
+                    if key == "doctor_availability":
+                        _digital_twin_state["doctors_available"] = int(data[key])
+                    elif key == "nurse_availability":
+                        _digital_twin_state["nurses_available"] = int(data[key])
+                    elif key == "ventilator_availability":
+                        _digital_twin_state["ventilators_available"] = int(data[key])
+                    else:
+                        _digital_twin_state[key] = data[key]
+
+        elif "admission" in event_source.lower():
+            _digital_twin_state["patients_waiting"] = max(0, _digital_twin_state["patients_waiting"] - 1)
+            _digital_twin_state["general_beds_available"] = max(0, _digital_twin_state["general_beds_available"] - 1)
+            _digital_twin_state["general_beds_occupied"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_occupied"] + 1)
+            _digital_twin_state["current_admissions"] += 1
+
+        elif "discharge" in event_source.lower():
+            _digital_twin_state["general_beds_available"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_available"] + 1)
+            _digital_twin_state["general_beds_occupied"] = max(0, _digital_twin_state["general_beds_occupied"] - 1)
+            _digital_twin_state["current_discharges"] += 1
+
+        elif "transfer" in event_source.lower():
+            if data.get("to_department") == "ICU":
+                _digital_twin_state["general_beds_available"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_available"] + 1)
+                _digital_twin_state["general_beds_occupied"] = max(0, _digital_twin_state["general_beds_occupied"] - 1)
+                _digital_twin_state["icu_beds_available"] = max(0, _digital_twin_state["icu_beds_available"] - 1)
+                _digital_twin_state["icu_beds_occupied"] = min(TOTAL_ICU_BEDS, _digital_twin_state["icu_beds_occupied"] + 1)
+            _digital_twin_state["current_transfers"] += 1
+
+        elif "beds" in event_source.lower():
+            if "general_beds_available" in data:
+                _digital_twin_state["general_beds_available"] = int(data["general_beds_available"])
+            if "icu_beds_available" in data:
+                _digital_twin_state["icu_beds_available"] = int(data["icu_beds_available"])
+
+        elif "staff" in event_source.lower():
+            if "doctor_availability" in data:
+                _digital_twin_state["doctors_available"] = int(data["doctor_availability"])
+            if "nurse_availability" in data:
+                _digital_twin_state["nurses_available"] = int(data["nurse_availability"])
+
+        elif "oxygen" in event_source.lower():
+            if "oxygen_utilization" in data:
+                _digital_twin_state["oxygen_utilization"] = float(data["oxygen_utilization"])
+
+        elif "ventilator" in event_source.lower():
+            if "ventilator_availability" in data:
+                _digital_twin_state["ventilators_available"] = int(data["ventilator_availability"])
+
+        # Enforce limits & secondary calculations
+        _digital_twin_state["general_beds_occupied"] = max(0, TOTAL_GENERAL_BEDS - _digital_twin_state["general_beds_available"])
+        _digital_twin_state["icu_beds_occupied"] = max(0, TOTAL_ICU_BEDS - _digital_twin_state["icu_beds_available"])
+        _digital_twin_state["oxygen_remaining"] = round(100.0 - _digital_twin_state["oxygen_utilization"], 2)
+        _digital_twin_state["ventilators_occupied"] = max(0, TOTAL_VENTILATORS - _digital_twin_state["ventilators_available"])
+
+        return _digital_twin_state.copy()
+
+async def bound_history_collections(db):
+    """Keeps MongoDB history collections bounded to prevent unbounded memory and storage growth."""
+    try:
+        pred_count = await db[COLLECTION_PREDICTIONS_HISTORY].count_documents({})
+        if pred_count > 1200:
+            excess = pred_count - 1000
+            old_docs = await db[COLLECTION_PREDICTIONS_HISTORY].find({}, {"_id": 1}).sort([("parsed_timestamp", 1)]).limit(excess).to_list(length=excess)
+            if old_docs:
+                await db[COLLECTION_PREDICTIONS_HISTORY].delete_many({"_id": {"$in": [d["_id"] for d in old_docs]}})
+
+        cap_count = await db[COLLECTION_CAPACITY_METRICS + "_history"].count_documents({})
+        if cap_count > 1200:
+            excess = cap_count - 1000
+            old_docs = await db[COLLECTION_CAPACITY_METRICS + "_history"].find({}, {"_id": 1}).sort([("parsed_timestamp", 1)]).limit(excess).to_list(length=excess)
+            if old_docs:
+                await db[COLLECTION_CAPACITY_METRICS + "_history"].delete_many({"_id": {"$in": [d["_id"] for d in old_docs]}})
+    except Exception:
+        pass
+
+async def execute_inference_cycle(tick_id: int, sequence_id: int, timestamp_str: str, parsed_time: datetime, trigger_data: dict):
+    """
+    Consolidated operational cycle:
+    1. Digital Twin state has already updated.
+    2. Persists updated Digital Twin state to MongoDB & Redis.
+    3. Runs Capacity Intelligence on consolidated state.
+    4. Runs ML demand prediction across 4 horizons.
+    5. Retrieves / re-uses cached 24h Prophet bed forecast.
+    6. Triggers Rule + AI alerts and recommendations.
+    7. Bounds historical collections.
+    8. Broadcasts complete authoritative state to WebSockets.
+    """
+    global _inference_lock, _stream_sequence, _cached_prophet_forecast, _last_prophet_run_time, _last_prophet_tick, _latest_authoritative_payload
+
+    if _inference_lock is None:
+        _inference_lock = asyncio.Lock()
+
+    async with _inference_lock:
+        try:
+            db = get_database()
+            redis = get_redis()
+
+            # Monotonic sequence increment
+            _stream_sequence = max(_stream_sequence + 1, sequence_id)
+            eff_seq = _stream_sequence
+            eff_tick = tick_id if tick_id > 0 else eff_seq
+
+            with _state_lock:
+                state_copy = _digital_twin_state.copy()
+
+            state_copy["parsed_timestamp"] = parsed_time
+            state_copy["sequence_id"] = eff_seq
+            state_copy["tick_id"] = eff_tick
+
+            # 1. Persist updated Digital Twin state to MongoDB & Redis
+            await db[COLLECTION_HOSPITAL_STATE].replace_one(
+                {"_id": "current_state"},
+                state_copy,
+                upsert=True
+            )
+            try:
+                redis.set("hospital_state:live", json.dumps({k: v for k, v in state_copy.items() if k != "parsed_timestamp"}, default=str))
+            except Exception:
+                pass
+
+            # 2. Hourly metrics on Digital Twin
+            one_hour_ago = parsed_time - timedelta(hours=1)
+            recent_cursor = db[COLLECTION_EVENTS].find({
+                "parsed_timestamp": {"$gte": one_hour_ago, "$lte": parsed_time}
+            }).sort([("parsed_timestamp", -1)]).limit(100)
+            recent_events = await recent_cursor.to_list(length=100)
+
+            admissions_count = sum(1 for e in recent_events if e.get("admitted") is True)
+            discharges_count = sum(1 for e in recent_events if "discharge" in str(e.get("action", "")).lower())
+            state_copy["current_admissions"] = admissions_count
+            state_copy["current_discharges"] = discharges_count
+
+            # Active policy
+            policy_doc = await db[COLLECTION_HOSPITAL_CONFIGURATION].find_one({"_id": "active_policy"})
+            active_policy = policy_doc.get("policy", "DEFAULT") if policy_doc else "DEFAULT"
+
+            # Recent capacity history
+            cap_history_cursor = db[COLLECTION_CAPACITY_METRICS + "_history"].find().sort([("parsed_timestamp", -1)]).limit(100)
+            recent_capacity_history = await cap_history_cursor.to_list(length=100)
+
+            # 3. Calculate Capacity Intelligence Metrics
+            metrics = calculate_capacity_metrics(state_copy, recent_events, recent_capacity_history)
+            metrics["parsed_timestamp"] = parsed_time
+            metrics["sequence_id"] = eff_seq
+            metrics["tick_id"] = eff_tick
+
+            await db[COLLECTION_CAPACITY_METRICS].replace_one(
+                {"_id": "current_metrics"},
+                metrics,
+                upsert=True
+            )
+            try:
+                redis.set("capacity_metrics:live", json.dumps({k: v for k, v in metrics.items() if k != "parsed_timestamp"}, default=str))
+            except Exception:
+                pass
+
+            await db[COLLECTION_CAPACITY_METRICS + "_history"].insert_one(metrics.copy())
+            await db[COLLECTION_HOSPITAL_STATE + "_history"].insert_one(state_copy.copy())
+
+            # 4. Extract Streaming Features & Run Predictions
+            data_for_features = trigger_data.copy() if trigger_data else {}
+            data_for_features.update(state_copy)
+            data_for_features["timestamp"] = timestamp_str
+
+            features_df = await extract_streaming_features(data_for_features, db)
+            predictions = await asyncio.to_thread(predict_capacity_demands_v2, features_df)
+            predictions["timestamp"] = timestamp_str
+            predictions["parsed_timestamp"] = parsed_time
+            predictions["sequence_id"] = eff_seq
+            predictions["tick_id"] = eff_tick
+
+            # 5. Prophet 24h Forecaster with Caching / Throttling
+            now_ts = time.time()
+            needs_prophet_run = (
+                _cached_prophet_forecast is None
+                or (now_ts - _last_prophet_run_time) >= 300.0
+                or (eff_tick > 0 and (eff_tick - _last_prophet_tick) >= 30)
+            )
+
+            if needs_prophet_run:
+                try:
+                    _cached_prophet_forecast = await asyncio.to_thread(forecast_beds, 24)
+                    _last_prophet_run_time = now_ts
+                    _last_prophet_tick = eff_tick
+                except Exception as fe:
+                    print(f"Prophet forecast calculation error: {fe}")
+                    if _cached_prophet_forecast is None:
+                        _cached_prophet_forecast = forecast_beds(24)
+
+            forecast_points = _cached_prophet_forecast or []
+            predictions["forecast_24h"] = forecast_points
+
+            # Save predictions to MongoDB & Redis
+            await db[COLLECTION_PREDICTIONS].replace_one(
+                {"_id": "current_predictions"},
+                predictions,
+                upsert=True
+            )
+            try:
+                redis.set("predictions:live", json.dumps({k: v for k, v in predictions.items() if k != "parsed_timestamp"}, default=str))
+            except Exception:
+                pass
+
+            # Write predictions history records
+            history_records = []
+            reg_targets = ["beds_required", "icu_beds_required", "doctors_required", "nurses_required", "ventilators_required", "oxygen_required", "queue_required", "ambulances_required", "load_required", "pressure_required", "availability_required"]
+            horizons = ["30m", "1h", "6h", "24h"]
+            horizon_deltas = {
+                "30m": timedelta(minutes=30),
+                "1h": timedelta(hours=1),
+                "6h": timedelta(hours=6),
+                "24h": timedelta(hours=24)
+            }
+            for key in reg_targets:
+                target_preds = predictions.get(key, {})
+                for h_name in horizons:
+                    h_pred = target_preds.get(h_name, {})
+                    if "value" in h_pred:
+                        history_records.append({
+                            "timestamp": timestamp_str,
+                            "parsed_timestamp": parsed_time,
+                            "target": key,
+                            "horizon": h_name,
+                            "predicted_time": parsed_time + horizon_deltas[h_name],
+                            "predicted_value": float(h_pred["value"]),
+                            "confidence_interval": h_pred.get("ci", [0.0, 0.0]),
+                            "explanation": h_pred.get("explanation", ""),
+                            "model_version": h_pred.get("model_version", "v2.2"),
+                            "validated": False
+                        })
+            if history_records:
+                await db[COLLECTION_PREDICTIONS_HISTORY].insert_many(history_records)
+
+            # Bound history collections periodically
+            if eff_tick % 25 == 0:
+                await bound_history_collections(db)
+
+            # 6. Run prediction validation, anomaly detection, monitoring
+            from app.ml.prediction_validation import validate_predictions
+            await validate_predictions(state_copy, metrics)
+
+            from app.ml.anomaly_detection import detect_anomalies
+            anomalies = await detect_anomalies(state_copy, metrics)
+
+            from app.ml.monitoring import update_prometheus_metrics
+            update_prometheus_metrics(metrics, predictions)
+
+            # 7. Evaluate alerts & recommendations
+            alerts_recs = check_alerts_and_recommendations(state_copy, metrics, predictions, active_policy)
+
+            if alerts_recs["alerts"]:
+                for alert in alerts_recs["alerts"]:
+                    alert["parsed_timestamp"] = parsed_time
+                    await db[COLLECTION_ALERTS].insert_one(alert)
+
+            if alerts_recs["recommendations"]:
+                for rec in alerts_recs["recommendations"]:
+                    rec["parsed_timestamp"] = parsed_time
+                    await db[COLLECTION_RECOMMENDATIONS].insert_one(rec)
+
+            # 8. Publish back to Kafka if available
+            producer = get_kafka_producer()
+            if producer is not None:
+                pred_msg = {"timestamp": timestamp_str, "predictions": {k: v for k, v in predictions.items() if k != "parsed_timestamp"}}
+                producer.send("hospital.predictions", value=pred_msg)
+                for alert in alerts_recs["alerts"]:
+                    producer.send("hospital.alerts", value=alert)
+                producer.flush()
+
+            # Evaluations
+            evaluations = await db["model_evaluations"].find_one({"_id": "current_evaluations"})
+            if evaluations:
+                evaluations.pop("_id", None)
+                evaluations.pop("parsed_timestamp", None)
+            else:
+                evaluations = {}
+
+            # 9. Broadcast composite authoritative state
+            broadcast_payload = {
+                "sequence": eff_seq,
+                "tick_id": eff_tick,
+                "timestamp": timestamp_str,
+                "digital_twin": {k: v for k, v in state_copy.items() if k != "parsed_timestamp"},
+                "capacity_metrics": {k: v for k, v in metrics.items() if k != "parsed_timestamp"},
+                "predictions": {k: v for k, v in predictions.items() if k != "parsed_timestamp"},
+                "forecast": forecast_points,
+                "alerts": alerts_recs["alerts"],
+                "recommendations": alerts_recs["recommendations"],
+                "anomalies": anomalies,
+                "evaluations": evaluations,
+                "active_policy": active_policy,
+                "last_updated": datetime.now().isoformat()
+            }
+            _latest_authoritative_payload = broadcast_payload
+
+            try:
+                redis.set("mediflow:latest_payload", json.dumps(broadcast_payload, default=str))
+            except Exception:
+                pass
+
+            await manager.broadcast(broadcast_payload)
+
+        except Exception as e:
+            print(f"Error in execute_inference_cycle: {e}")
+
 async def process_stream_update(event_source: str, data: dict):
     """
-    Core processor:
-    1. Ingests Kafka events and updates the single source of truth Digital Twin.
-    2. Persists updated Digital Twin state to MongoDB & Redis.
-    3. Calculates rolling window streaming features.
-    4. Runs Capacity Intelligence algorithms.
-    5. Computes multi-horizon predictive demand.
-    6. Triggers Rule + AI alerts and recommendations.
-    7. Publishes outputs back to Kafka and broadcasts to dashboard WebSockets.
+    Standard ingestion point for single events (e.g. manual /events API ingestion).
+    Updates Digital Twin and triggers the consolidated inference cycle.
     """
     try:
         db = get_database()
-        redis = get_redis()
-        
-        # Parse timestamp
         timestamp_str = data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        try:
-            parsed_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f")
-        except ValueError:
-            try:
-                parsed_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-            except Exception:
-                try:
-                    parsed_time = datetime.strptime(timestamp_str, "%d-%m-%Y %H:%M")
-                except ValueError:
-                    parsed_time = datetime.now()
-                    timestamp_str = parsed_time.strftime("%Y-%m-%d %H:%M:%S")
+        parsed_time = parse_timestamp(timestamp_str)
 
-        # 1. Update Authoritative Digital Twin State based on event source/topic
-        global _digital_twin_state
-        with _state_lock:
-            _digital_twin_state["timestamp"] = timestamp_str
-            
-            # Map values depending on event type
-            if "emergency" in event_source.lower() or "patient_id" in data:
-                # Patient Emergency Arrival
-                _digital_twin_state["patients_waiting"] += 1
-                if data.get("arrival_mode") == "Ambulance":
-                    _digital_twin_state["ambulances_active"] += 1
-                
-                # Copy values if present
-                for key in ["general_beds_available", "icu_beds_available", "doctor_availability", "nurse_availability", "oxygen_utilization", "ventilator_availability"]:
-                    if key in data:
-                        if key == "doctor_availability":
-                            _digital_twin_state["doctors_available"] = int(data[key])
-                        elif key == "nurse_availability":
-                            _digital_twin_state["nurses_available"] = int(data[key])
-                        elif key == "ventilator_availability":
-                            _digital_twin_state["ventilators_available"] = int(data[key])
-                        else:
-                            _digital_twin_state[key] = data[key]
-            
-            elif "admission" in event_source.lower():
-                _digital_twin_state["patients_waiting"] = max(0, _digital_twin_state["patients_waiting"] - 1)
-                _digital_twin_state["general_beds_available"] = max(0, _digital_twin_state["general_beds_available"] - 1)
-                _digital_twin_state["general_beds_occupied"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_occupied"] + 1)
-                _digital_twin_state["current_admissions"] += 1
-                
-            elif "discharge" in event_source.lower():
-                _digital_twin_state["general_beds_available"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_available"] + 1)
-                _digital_twin_state["general_beds_occupied"] = max(0, _digital_twin_state["general_beds_occupied"] - 1)
-                _digital_twin_state["current_discharges"] += 1
-                
-            elif "transfer" in event_source.lower():
-                if data.get("to_department") == "ICU":
-                    _digital_twin_state["general_beds_available"] = min(TOTAL_GENERAL_BEDS, _digital_twin_state["general_beds_available"] + 1)
-                    _digital_twin_state["general_beds_occupied"] = max(0, _digital_twin_state["general_beds_occupied"] - 1)
-                    _digital_twin_state["icu_beds_available"] = max(0, _digital_twin_state["icu_beds_available"] - 1)
-                    _digital_twin_state["icu_beds_occupied"] = min(TOTAL_ICU_BEDS, _digital_twin_state["icu_beds_occupied"] + 1)
-                _digital_twin_state["current_transfers"] += 1
-                
-            elif "beds" in event_source.lower():
-                _digital_twin_state["general_beds_available"] = int(data["general_beds_available"])
-                _digital_twin_state["icu_beds_available"] = int(data["icu_beds_available"])
-                _digital_twin_state["general_beds_occupied"] = max(0, TOTAL_GENERAL_BEDS - int(data["general_beds_available"]))
-                _digital_twin_state["icu_beds_occupied"] = max(0, TOTAL_ICU_BEDS - int(data["icu_beds_available"]))
-                
-            elif "staff" in event_source.lower():
-                _digital_twin_state["doctors_available"] = int(data.get("doctor_availability", _digital_twin_state["doctors_available"]))
-                _digital_twin_state["nurses_available"] = int(data.get("nurse_availability", _digital_twin_state["nurses_available"]))
-                
-            elif "oxygen" in event_source.lower():
-                _digital_twin_state["oxygen_utilization"] = float(data["oxygen_utilization"])
-                
-            elif "ventilator" in event_source.lower():
-                _digital_twin_state["ventilators_available"] = int(data["ventilator_availability"])
-                _digital_twin_state["ventilators_occupied"] = max(0, TOTAL_VENTILATORS - int(data["ventilator_availability"]))
+        # Update authoritative Digital Twin state
+        update_digital_twin_from_event(event_source, data, timestamp_str)
 
-            # Enforce limits & secondary calculations
-            _digital_twin_state["general_beds_occupied"] = TOTAL_GENERAL_BEDS - _digital_twin_state["general_beds_available"]
-            _digital_twin_state["icu_beds_occupied"] = TOTAL_ICU_BEDS - _digital_twin_state["icu_beds_available"]
-            _digital_twin_state["oxygen_remaining"] = round(100.0 - _digital_twin_state["oxygen_utilization"], 2)
-            _digital_twin_state["ventilators_occupied"] = TOTAL_VENTILATORS - _digital_twin_state["ventilators_available"]
-
-            state_copy = _digital_twin_state.copy()
-
-        # Add parsed time for MongoDB query filters
-        state_copy["parsed_timestamp"] = parsed_time
-
-        # Save event log to MongoDB events collection
+        # Persist event log
         event_entry = data.copy()
         event_entry["parsed_timestamp"] = parsed_time
         event_entry["timestamp"] = timestamp_str
+        event_entry["topic"] = event_source
         await db[COLLECTION_EVENTS].insert_one(event_entry)
 
-        # 2. Persist updated Digital Twin state to MongoDB & Cache in Redis
-        await db[COLLECTION_HOSPITAL_STATE].replace_one(
-            {"_id": "current_state"}, 
-            state_copy, 
-            upsert=True
+        seq_id = data.get("sequence_id", 0)
+        tick_id = data.get("tick_id", seq_id)
+
+        await execute_inference_cycle(
+            tick_id=tick_id,
+            sequence_id=seq_id,
+            timestamp_str=timestamp_str,
+            parsed_time=parsed_time,
+            trigger_data=data
         )
-        redis.set("hospital_state:live", json.dumps(_digital_twin_state))
-
-        # 3. Retrieve historical events to calculate rolling features & metrics
-        one_hour_ago = parsed_time - timedelta(hours=1)
-        recent_cursor = db[COLLECTION_EVENTS].find({
-            "parsed_timestamp": {"$gte": one_hour_ago, "$lte": parsed_time}
-        }).sort([("parsed_timestamp", -1)]).limit(100)
-        recent_events = await recent_cursor.to_list(length=100)
-
-        # Update hourly metrics on Digital Twin
-        admissions_count = sum(1 for e in recent_events if e.get("admitted") is True)
-        discharges_count = sum(1 for e in recent_events if "discharge" in str(e.get("action", "")).lower())
-        state_copy["current_admissions"] = admissions_count
-        state_copy["current_discharges"] = discharges_count
-
-        # Get active policy
-        policy_doc = await db[COLLECTION_HOSPITAL_CONFIGURATION].find_one({"_id": "active_policy"})
-        active_policy = policy_doc.get("policy", "DEFAULT") if policy_doc else "DEFAULT"
-
-        # Query recent capacity metrics history for MA calculation
-        cap_history_cursor = db[COLLECTION_CAPACITY_METRICS + "_history"].find().sort([("parsed_timestamp", -1)]).limit(100)
-        recent_capacity_history = await cap_history_cursor.to_list(length=100)
-
-        # 4. Calculate Capacity Intelligence Metrics
-        metrics = calculate_capacity_metrics(state_copy, recent_events, recent_capacity_history)
-        metrics["parsed_timestamp"] = parsed_time
-        await db[COLLECTION_CAPACITY_METRICS].replace_one(
-            {"_id": "current_metrics"}, 
-            metrics, 
-            upsert=True
-        )
-        redis.set("capacity_metrics:live", json.dumps(metrics, default=str))
-
-        # Save history log entries
-        await db[COLLECTION_CAPACITY_METRICS + "_history"].insert_one(metrics.copy())
-        await db[COLLECTION_HOSPITAL_STATE + "_history"].insert_one(state_copy.copy())
-
-        # 5. Extract Streaming Features & Run Predictions
-        # Map values back into data to ensure features calculation gets the updated state
-        data_for_features = data.copy()
-        data_for_features.update(_digital_twin_state)
-        data_for_features["timestamp"] = timestamp_str
-
-        features_df = await extract_streaming_features(data_for_features, db)
-        
-        # Run 11 regressors across 4 horizons
-        predictions = predict_capacity_demands_v2(features_df)
-        predictions["timestamp"] = timestamp_str
-        predictions["parsed_timestamp"] = parsed_time
-        
-        # Run Prophet Forecaster curves
-        forecast_points = forecast_beds(24)
-        predictions["forecast_24h"] = forecast_points
-
-        # Save predictions to MongoDB & Redis
-        await db[COLLECTION_PREDICTIONS].replace_one(
-            {"_id": "current_predictions"}, 
-            predictions, 
-            upsert=True
-        )
-        redis.set("predictions:live", json.dumps(predictions, default=str))
-
-        # Write individual prediction targets/horizons to history
-        history_records = []
-        reg_targets = ["beds_required", "icu_beds_required", "doctors_required", "nurses_required", "ventilators_required", "oxygen_required", "queue_required", "ambulances_required", "load_required", "pressure_required", "availability_required"]
-        horizons = ["30m", "1h", "6h", "24h"]
-        horizon_deltas = {
-            "30m": timedelta(minutes=30),
-            "1h": timedelta(hours=1),
-            "6h": timedelta(hours=6),
-            "24h": timedelta(hours=24)
-        }
-        for key in reg_targets:
-            target_preds = predictions.get(key, {})
-            for h_name in horizons:
-                h_pred = target_preds.get(h_name, {})
-                if "value" in h_pred:
-                    history_records.append({
-                        "timestamp": timestamp_str,
-                        "parsed_timestamp": parsed_time,
-                        "target": key,
-                        "horizon": h_name,
-                        "predicted_time": parsed_time + horizon_deltas[h_name],
-                        "predicted_value": h_pred["value"],
-                        "confidence_interval": h_pred.get("ci", [0.0, 0.0]),
-                        "explanation": h_pred.get("explanation", ""),
-                        "model_version": h_pred.get("model_version", "v2.2"),
-                        "validated": False
-                    })
-        if history_records:
-            await db[COLLECTION_PREDICTIONS_HISTORY].insert_many(history_records)
-
-        # Run prediction validation engine
-        from app.ml.prediction_validation import validate_predictions
-        await validate_predictions(state_copy, metrics)
-
-        # Run anomaly detection
-        from app.ml.anomaly_detection import detect_anomalies
-        anomalies = await detect_anomalies(state_copy, metrics)
-
-        # Update Prometheus Metrics
-        from app.ml.monitoring import update_prometheus_metrics
-        update_prometheus_metrics(metrics, predictions)
-
-        # 6. Evaluate alerts & recommendations using current policy
-        alerts_recs = check_alerts_and_recommendations(state_copy, metrics, predictions, active_policy)
-
-        # Save active alerts
-        if alerts_recs["alerts"]:
-            for alert in alerts_recs["alerts"]:
-                alert["parsed_timestamp"] = parsed_time
-                await db[COLLECTION_ALERTS].insert_one(alert)
-
-        # Save recommendations
-        if alerts_recs["recommendations"]:
-            for rec in alerts_recs["recommendations"]:
-                rec["parsed_timestamp"] = parsed_time
-                await db[COLLECTION_RECOMMENDATIONS].insert_one(rec)
-
-        # 7. Publish to Kafka back-channels
-        producer = get_kafka_producer()
-        if producer is not None:
-            # Publish predictions
-            pred_msg = {"timestamp": timestamp_str, "predictions": {k: v for k, v in predictions.items() if k != "parsed_timestamp"}}
-            producer.send("hospital.predictions", value=pred_msg)
-            # Publish alerts
-            for alert in alerts_recs["alerts"]:
-                producer.send("hospital.alerts", value=alert)
-            producer.flush()
-
-        # Fetch current evaluations summary
-        evaluations = await db["model_evaluations"].find_one({"_id": "current_evaluations"})
-        if evaluations:
-            evaluations.pop("_id", None)
-            evaluations.pop("parsed_timestamp", None)
-        else:
-            evaluations = {}
-
-        # 8. Push live updates to dashboard clients via WebSockets
-        broadcast_payload = {
-            "timestamp": timestamp_str,
-            "digital_twin": _digital_twin_state,
-            "capacity_metrics": {k: v for k, v in metrics.items() if k != "parsed_timestamp"},
-            "predictions": {k: v for k, v in predictions.items() if k != "parsed_timestamp"},
-            "alerts": alerts_recs["alerts"],
-            "recommendations": alerts_recs["recommendations"],
-            "anomalies": anomalies,
-            "evaluations": evaluations,
-            "active_policy": active_policy
-        }
-        await manager.broadcast(broadcast_payload)
-
     except Exception as e:
-        print(f"Error processing stream update: {e}")
+        print(f"Error in process_stream_update: {e}")
+
+async def process_coherent_tick_batch(batch_events: list, tick_id: int, sequence_id: int, timestamp_str: str, last_val: dict):
+    """
+    Processes all Kafka messages received in a consumer poll iteration as a single coherent tick.
+    Updates the Digital Twin with every event first, then runs exactly ONE inference cycle.
+    """
+    try:
+        db = get_database()
+        ts_str = timestamp_str or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        parsed_time = parse_timestamp(ts_str)
+
+        # 1. Update Digital Twin for all events and persist event logs
+        for topic, data in batch_events:
+            e_ts = data.get("timestamp", ts_str)
+            e_parsed = parse_timestamp(e_ts)
+            event_copy = data.copy()
+            event_copy["parsed_timestamp"] = e_parsed
+            event_copy["timestamp"] = e_ts
+            event_copy["topic"] = topic
+            try:
+                await db[COLLECTION_EVENTS].insert_one(event_copy)
+            except Exception:
+                pass
+            update_digital_twin_from_event(topic, data, e_ts)
+
+        # 2. Run ONE consolidated inference cycle for the coherent state
+        await execute_inference_cycle(
+            tick_id=tick_id,
+            sequence_id=sequence_id,
+            timestamp_str=ts_str,
+            parsed_time=parsed_time,
+            trigger_data=last_val or {}
+        )
+    except Exception as e:
+        print(f"Error in process_coherent_tick_batch: {e}")
 
 def run_mock_ingestion_sync(loop: asyncio.AbstractEventLoop):
     """
-    Simulates Kafka stream by reading the synthetic CSV dataset row-by-row
-    and pushing it directly into the process_stream_update loop.
+    Mock streaming loop: only active when MEDIFLOW_MOCK_MODE=true is explicitly configured.
+    Cycles continuously through the synthetic dataset generating current simulation timestamps.
     """
-    CSV_PATH = "datasets/MediFlow_AI_Synthetic_Dataset (1).csv"
-    if not os.path.exists(CSV_PATH):
-        print(f"[Mock Consumer] Error: Dataset CSV not found at {CSV_PATH}. Mock streaming aborted.")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(base_dir, "datasets", "MediFlow_AI_Synthetic_Dataset (1).csv"),
+        os.path.join(base_dir, "datasets", "MediFlow_AI_Synthetic_Dataset.csv"),
+        os.path.join(base_dir, "datasets", "Hospital ER_Data.csv"),
+        "datasets/MediFlow_AI_Synthetic_Dataset (1).csv",
+        "datasets/MediFlow_AI_Synthetic_Dataset.csv"
+    ]
+    csv_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            csv_path = c
+            break
+
+    if not csv_path:
+        print("[Mock Consumer] Warning: Synthetic dataset CSV not found. Initializing baseline state...")
+        init_event = get_authoritative_state()
+        init_event["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        asyncio.run_coroutine_threadsafe(process_stream_update("INITIAL", init_event), loop)
         return
-        
-    print("[Mock Consumer] Loading CSV for mock streaming...")
+
+    print(f"[Mock Consumer] Loading CSV for mock streaming from: {csv_path}")
     try:
-        df = pd.read_csv(CSV_PATH)
+        df = pd.read_csv(csv_path)
     except Exception as e:
         print(f"[Mock Consumer] Error reading CSV: {e}")
         return
 
-    # Sort chronologically
-    df["parsed_time"] = pd.to_datetime(df["timestamp"])
-    df = df.sort_values(by="parsed_time").reset_index(drop=True)
+    if "timestamp" in df.columns:
+        df["parsed_time"] = pd.to_datetime(df["timestamp"])
+        df = df.sort_values(by="parsed_time").reset_index(drop=True)
 
-    print("[Mock Consumer] Starting mock streaming loop.")
+    print("[Mock Consumer] Starting continuous mock streaming loop with current simulation timestamps.")
+    tick_id = 0
+    sequence_id = 0
     while True:
         for idx, row in df.iterrows():
+            tick_id += 1
+            sequence_id += 1
+            sim_time = datetime.now()
+            ts_str = sim_time.strftime("%Y-%m-%d %H:%M:%S")
+
             event = {
-                "patient_id": str(row["patient_id"]),
-                "timestamp": str(row["timestamp"]),
-                "age": int(row["age"]),
-                "gender": str(row["gender"]),
-                "arrival_mode": str(row["arrival_mode"]),
-                "triage_level": str(row["triage_level"]),
-                "wait_time": int(row["wait_time"]),
-                "emergency_severity_level": int(row["emergency_severity_level"]),
-                "department": str(row["department"]),
-                "admitted": bool(row["admitted"]),
-                "icu_beds_available": int(row["icu_beds_available"]),
-                "general_beds_available": int(row["general_beds_available"]),
-                "doctor_availability": int(row["doctor_availability"]),
-                "nurse_availability": int(row["nurse_availability"]),
-                "ambulance_requests": int(row["ambulance_requests"]),
-                "oxygen_utilization": float(row["oxygen_utilization"]),
-                "ventilator_availability": int(row["ventilator_availability"])
+                "tick_id": tick_id,
+                "sequence_id": sequence_id,
+                "patient_id": str(row.get("patient_id", f"PT-{idx}")),
+                "timestamp": ts_str,
+                "age": int(row.get("age", 45)),
+                "gender": str(row.get("gender", "M")),
+                "arrival_mode": str(row.get("arrival_mode", "Walk-in")),
+                "triage_level": str(row.get("triage_level", "Urgent")),
+                "wait_time": int(row.get("wait_time", 30)),
+                "emergency_severity_level": int(row.get("emergency_severity_level", 3)),
+                "department": str(row.get("department", "Emergency")),
+                "admitted": bool(row.get("admitted", False)),
+                "icu_beds_available": int(row.get("icu_beds_available", 20)),
+                "general_beds_available": int(row.get("general_beds_available", 180)),
+                "doctor_availability": int(row.get("doctor_availability", 25)),
+                "nurse_availability": int(row.get("nurse_availability", 55)),
+                "ambulance_requests": int(row.get("ambulance_requests", 2)),
+                "oxygen_utilization": float(row.get("oxygen_utilization", 65.0)),
+                "ventilator_availability": int(row.get("ventilator_availability", 18))
             }
-            
+
             asyncio.run_coroutine_threadsafe(process_stream_update("MOCK", event), loop)
-            time.sleep(1)
+            time.sleep(1.5)
 
 def run_consumer_thread(loop: asyncio.AbstractEventLoop):
-    """Subscribes to all 9 operational topics or switches to mock ingestion fallback."""
+    """
+    Subscribes to all 9 operational topics.
+    Enforces strict MEDIFLOW_MOCK_MODE check: never silently falls back to mock mode.
+    """
+    mock_mode = os.getenv("MEDIFLOW_MOCK_MODE", "false").lower() in ("true", "1")
+    if mock_mode:
+        print("[Consumer] MEDIFLOW_MOCK_MODE=true detected. Starting mock ingestion pipeline.")
+        run_mock_ingestion_sync(loop)
+        return
+
     v2_topics = [
         "hospital.patient.admission",
         "hospital.patient.discharge",
@@ -408,9 +606,9 @@ def run_consumer_thread(loop: asyncio.AbstractEventLoop):
         "hospital.resource.oxygen",
         "hospital.resource.ventilator"
     ]
-    
+
     while True:
-        print(f"Connecting consumer to Kafka on {KAFKA_BOOTSTRAP}...")
+        print(f"[Consumer] Connecting to Kafka broker on {KAFKA_BOOTSTRAP}...")
         try:
             consumer = KafkaConsumer(
                 *v2_topics,
@@ -420,32 +618,53 @@ def run_consumer_thread(loop: asyncio.AbstractEventLoop):
                 group_id="mediflow-v2-backend-group",
                 consumer_timeout_ms=3000
             )
-            print("Connected consumer to Kafka topics.")
-            
+            print(f"[Consumer] Successfully connected to Kafka topics: {v2_topics}")
+
             while True:
                 try:
                     message_batch = consumer.poll(timeout_ms=1000)
+                    if not message_batch:
+                        continue
+
+                    batch_events = []
+                    max_seq = 0
+                    max_tick = 0
+                    latest_ts = None
+                    last_val = None
+
                     for partition, messages in message_batch.items():
                         for msg in messages:
-                            asyncio.run_coroutine_threadsafe(
-                                process_stream_update(msg.topic, msg.value), 
-                                loop
-                            )
+                            val = msg.value
+                            seq = val.get("sequence_id", 0)
+                            tick = val.get("tick_id", seq)
+                            if seq > max_seq:
+                                max_seq = seq
+                            if tick > max_tick:
+                                max_tick = tick
+                            if "timestamp" in val:
+                                latest_ts = val["timestamp"]
+                            last_val = val
+                            batch_events.append((msg.topic, val))
+
+                    if batch_events:
+                        asyncio.run_coroutine_threadsafe(
+                            process_coherent_tick_batch(batch_events, max_tick, max_seq, latest_ts, last_val),
+                            loop
+                        )
                 except Exception as e:
-                    print(f"Error in Kafka consumer iteration: {e}")
+                    print(f"[Consumer] Error in Kafka poll loop: {e}")
                     break
-                    
+
         except NoBrokersAvailable:
-            print("Kafka brokers not available. Switching to MOCK INGESTION mode...")
-            run_mock_ingestion_sync(loop)
-            break
+            print(f"[Consumer] Kafka broker not available at {KAFKA_BOOTSTRAP}. Retrying in 5 seconds... (Set MEDIFLOW_MOCK_MODE=true to enable offline simulation mode)")
+            time.sleep(5)
         except Exception as e:
-            print(f"Error starting consumer thread: {e}. Retrying in 10s...")
-            time.sleep(10)
+            print(f"[Consumer] Error starting Kafka consumer: {e}. Retrying in 5 seconds...")
+            time.sleep(5)
 
 def start_background_consumer():
     """Launches the background thread running the Kafka consumer loop."""
     loop = asyncio.get_running_loop()
     t = threading.Thread(target=run_consumer_thread, args=(loop,), daemon=True)
     t.start()
-    print("V2.1 Background consumer thread spawned.")
+    print("V2.2 Background consumer thread spawned.")
