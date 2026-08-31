@@ -353,22 +353,29 @@ def predict_admission(event: dict) -> dict:
             proba = float(model.predict_proba(feats)[0][1])
             pred_admitted = bool(proba >= 0.5)
             
-            # Save this admission prediction to the DB for later validation matching
-            db = get_database()
-            if db is not None:
-                # Run as fire-and-forget or async task
-                import asyncio
-                pid = event.get("patient_id", "unknown")
-                asyncio.create_task(db["admission_predictions"].replace_one(
-                    {"patient_id": pid},
-                    {
-                        "patient_id": pid,
-                        "predicted_admission": pred_admitted,
-                        "admission_proba": proba,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    },
-                    upsert=True
-                ))
+            # Save this admission prediction to the DB for later validation matching if available
+            try:
+                from app.db import get_database
+                db = get_database()
+                if db is not None:
+                    import asyncio
+                    pid = event.get("patient_id", "unknown")
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(db["admission_predictions"].replace_one(
+                            {"patient_id": pid},
+                            {
+                                "patient_id": pid,
+                                "predicted_admission": pred_admitted,
+                                "admission_proba": proba,
+                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            },
+                            upsert=True
+                        ))
+                    except RuntimeError:
+                        pass
+            except Exception:
+                pass
 
             return {
                 "patient_id": event.get("patient_id", "unknown"),
@@ -507,33 +514,50 @@ def forecast_beds(hours: int = 24) -> list:
             f_oxy = p_oxy.predict(future_df) if p_oxy is not None else None
             
             for i in range(hours):
-                adm_val = max(0, int(f_adm.iloc[i]["yhat"]))
-                dis_val = max(0, int(f_dis.iloc[i]["yhat"]))
-                oxy_val = max(0.0, float(f_oxy.iloc[i]["yhat"])) if f_oxy is not None else 65.0
+                adm_val = round(max(0.0, float(f_adm.iloc[i]["yhat"])), 2)
+                dis_val = round(max(0.0, float(f_dis.iloc[i]["yhat"])), 2)
+                oxy_val = round(max(0.0, float(f_oxy.iloc[i]["yhat"])), 2) if f_oxy is not None else 65.0
                 
-                # Mock bed occupancy occupancy trend: initial occupancy (e.g. 180) + sum(adm) - sum(dis)
-                predicted_occupancy = max(0, min(300, 180 + adm_val - dis_val))
+                # Dynamic bed occupancy trend: initial occupancy baseline (e.g. 180.0) + adm - dis
+                predicted_occupancy = round(max(0.0, min(300.0, 180.0 + adm_val - dis_val)), 2)
+                h_str = future_dates[i].strftime("%H:00")
+                ts_str = future_dates[i].strftime("%Y-%m-%d %H:00")
                 
                 forecast_data.append({
-                    "ts": future_dates[i].strftime("%Y-%m-%d %H:00"),
+                    "timestamp": h_str,
+                    "hour": h_str,
+                    "ts": ts_str,
+                    "occupancy": predicted_occupancy,
                     "predicted_occupancy": predicted_occupancy,
+                    "yhat": predicted_occupancy,
+                    "inflow": adm_val,
                     "admissions": adm_val,
+                    "predicted_inflow": adm_val,
                     "discharges": dis_val,
-                    "oxygen": round(oxy_val, 1)
+                    "oxygen": oxy_val
                 })
             return forecast_data
         except Exception as e:
             print(f"Error running Prophet forecasting: {e}")
 
-    # Fallback oscillated trend
+    # Fallback oscillated trend with exact float precision
     for i in range(hours):
         future_ts = now + timedelta(hours=i)
-        occupancy = int(180 + 20 * np.sin(i / 4.0) + (i % 6))
+        occupancy = round(float(180.0 + 20.0 * np.sin(i / 4.0) + (i % 6)), 2)
+        inflow = round(float(max(1.0, 6.0 + 3.0 * np.sin(i / 3.0))), 2)
+        h_str = future_ts.strftime("%H:00")
+        ts_str = future_ts.strftime("%Y-%m-%d %H:00")
         forecast_data.append({
-            "ts": future_ts.strftime("%Y-%m-%d %H:00"),
-            "predicted_occupancy": max(0, min(300, occupancy)),
-            "admissions": int(5 + 2 * np.sin(i / 3.0)),
-            "discharges": int(4 + 1.5 * np.cos(i / 3.0)),
-            "oxygen": round(70.0 + 5.0 * np.sin(i / 6.0), 1)
+            "timestamp": h_str,
+            "hour": h_str,
+            "ts": ts_str,
+            "occupancy": max(0.0, min(300.0, occupancy)),
+            "predicted_occupancy": max(0.0, min(300.0, occupancy)),
+            "yhat": max(0.0, min(300.0, occupancy)),
+            "inflow": inflow,
+            "admissions": inflow,
+            "predicted_inflow": inflow,
+            "discharges": round(float(max(1.0, 4.0 + 1.5 * np.cos(i / 3.0))), 2),
+            "oxygen": round(float(70.0 + 5.0 * np.sin(i / 6.0)), 2)
         })
     return forecast_data
