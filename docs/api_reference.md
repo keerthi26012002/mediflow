@@ -14,3 +14,7 @@
 ## WebSocket Streaming
 - \WS /v2/live\: Real-time bidirectional telemetry stream with instant state dispatch.
 - \WS /ws/alerts\: Role-filtered emergency hospital alert broadcast.
+
+
+## Role Authorization Matrix for Live WebSocket
+Broadcast alerts dynamically filter by connected user role claims.
