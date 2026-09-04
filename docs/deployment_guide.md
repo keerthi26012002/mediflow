@@ -20,3 +20,7 @@ python -m streaming.kafka_producer
 # 4. Launch FastAPI server
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 \
+
+
+## Prometheus & Health Check Endpoints
+Exposes /health and /metrics endpoints for cluster liveness probing.
