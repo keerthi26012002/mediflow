@@ -16,3 +16,7 @@ MediFlow AI implements a strict Zero-Trust Role-Based Access Control (RBAC) arch
 1. **Token Issuance**: \POST /auth/token\ or \POST /auth/login\ generates an HMAC-SHA256 encoded JWT token with role claims.
 2. **Validation**: Requests pass through \pp/auth.py:get_current_active_user\ and role dependency guards (equire_roles\).
 3. **Revocation & Blacklisting**: Token expiration and invalidation are managed via Redis cache.
+
+
+## Token Revocation & Audit Logging
+Logs every privileged endpoint access to security audit collection.
