@@ -9,3 +9,7 @@
 
 ## Partition Strategy & Consumer Groups
 Kafka topics partition on patient hospital unit IDs to ensure sequential ordering per ward.
+
+
+## Collection Pruning Policy
+Capped collections and automated maintenance keep MongoDB index memory small.
