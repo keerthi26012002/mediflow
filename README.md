@@ -38,3 +38,10 @@ MediFlow AI is a healthcare operations intelligence platform designed to forecas
 
 4. **Kaggle GPU Training:**
    Refer to the training notebook in `notebooks/02_kaggle_gpu_training.ipynb` to optimize and tune models using Optuna on GPU accelerators.
+
+---
+
+## 🌐 TemplateMo 618 Catalyst Landing Page & UI
+MediFlow AI features an integrated modern landing portal powered by TemplateMo 618 Catalyst, linking directly into the zero-trust authenticated Glassmorphic Capacity Intelligence Dashboard.
+
+* **Landing Portal**: \http://127.0.0.1:8000/* **Authentication Portal**: \http://127.0.0.1:8000/login* **Capacity Dashboard**: \http://127.0.0.1:8000/dashboard* **Interactive API Docs**: \http://127.0.0.1:8000/docs
