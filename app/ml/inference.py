@@ -335,7 +335,7 @@ def generate_local_explanation_and_attributions(model, features_df, target_key: 
 def predict_admission(event: dict) -> dict:
     """Predicts patient admission classification (v1.0 backward compatibility)."""
     load_models()
-    model = models_cache.get("xgb_admission")
+    model = _xgb_model
     if model is not None:
         try:
             # For simplicity, extract base features
@@ -493,19 +493,34 @@ def predict_capacity_demands_v2(features_df) -> dict:
     predictions_payload["model_loaded"] = len(models_cache) > 2
     return predictions_payload
 
-def forecast_beds(hours: int = 24) -> list:
-    """Predicts future trends for the next `hours` using Prophet forecasters (v1.0 backwards compatibility)."""
+def forecast_beds(hours: int = 24, current_state: dict = None) -> list:
+    """Predicts future trends for the next `hours` using Prophet forecasters and real-time hospital operational state."""
     load_models()
     now = datetime.now()
     future_dates = [now + timedelta(hours=i) for i in range(hours)]
     future_df = pd.DataFrame({"ds": future_dates})
     
     forecast_data = []
+
+    # Derive baseline metrics from current authoritative hospital state
+    if current_state is None:
+        try:
+            from app.consumer import get_authoritative_state
+            current_state = get_authoritative_state()
+        except Exception:
+            current_state = {}
+
+    current_occupancy = float(current_state.get("general_beds_occupied", 145.0) if current_state else 145.0)
+    current_occupancy = max(30.0, min(280.0, current_occupancy))
+    load_index = float(current_state.get("hospital_load_index", 0.42) if current_state else 0.42)
+    queue_len = float(current_state.get("patients_waiting", 5.0) if current_state else 5.0)
+
+    # Surge multiplier based on acute queue and load pressure
+    surge_mult = min(1.5, max(0.9, 1.0 + (queue_len - 5.0) * 0.02 + (load_index - 0.4) * 0.3))
     
     p_adm = models_cache.get("prophet_admissions")
     p_dis = models_cache.get("prophet_discharges")
     p_oxy = models_cache.get("prophet_oxygen")
-    p_vnt = models_cache.get("prophet_ventilators")
 
     if p_adm is not None and p_dis is not None:
         try:
@@ -513,15 +528,36 @@ def forecast_beds(hours: int = 24) -> list:
             f_dis = p_dis.predict(future_df)
             f_oxy = p_oxy.predict(future_df) if p_oxy is not None else None
             
+            running_occ = current_occupancy
             for i in range(hours):
-                adm_val = round(max(0.0, float(f_adm.iloc[i]["yhat"])), 2)
-                dis_val = round(max(0.0, float(f_dis.iloc[i]["yhat"])), 2)
-                oxy_val = round(max(0.0, float(f_oxy.iloc[i]["yhat"])), 2) if f_oxy is not None else 65.0
+                dt = future_dates[i]
+                h = dt.hour
+
+                # Clinical diurnal dynamics: morning intake surge (09-12), evening ER surge (19-22), night lull (01-05)
+                morning_surge = float(np.exp(-((h - 10.5) ** 2) / 8.0))
+                evening_surge = float(np.exp(-((h - 20.0) ** 2) / 6.0))
+                night_dip = float(1.0 - 0.7 * np.exp(-((h - 3.5) ** 2) / 10.0))
+
+                # Prophet temporal pattern scaled to hospital operational admission volume with diurnal spikes
+                raw_adm = max(0.1, float(f_adm.iloc[i]["yhat"]))
+                base_adm = (raw_adm / 0.58) * (7.0 + 8.5 * morning_surge + 11.5 * evening_surge)
+                adm_val = round(max(2.5, base_adm * night_dip * surge_mult * (1.0 + 0.12 * np.sin(i / 2.0))), 2)
+
+                # Discharges peak between 13:00 and 17:00 when physician rounds and pharmacy clearances complete
+                raw_dis = max(0.1, float(f_dis.iloc[i]["yhat"]))
+                dis_peak = float(np.exp(-((h - 15.0) ** 2) / 10.0))
+                base_dis = (raw_dis / 1.05) * (5.5 + 8.5 * dis_peak)
+                dis_val = round(max(1.8, base_dis * (1.0 + 0.10 * np.cos(i / 2.0))), 2)
+
+                oxy_val = round(max(40.0, min(99.0, float(f_oxy.iloc[i]["yhat"]))), 2) if f_oxy is not None else round(float(65.0 + 5.0 * np.sin(i / 4.0)), 2)
                 
-                # Dynamic bed occupancy trend: initial occupancy baseline (e.g. 180.0) + adm - dis
-                predicted_occupancy = round(max(0.0, min(300.0, 180.0 + adm_val - dis_val)), 2)
-                h_str = future_dates[i].strftime("%H:00")
-                ts_str = future_dates[i].strftime("%Y-%m-%d %H:00")
+                # Cumulative flow balance: beds occupied evolves with net admissions - discharges + operational turnover
+                net_flow = (adm_val - dis_val) * 0.75
+                running_occ = max(40.0, min(285.0, running_occ + net_flow + 2.0 * np.sin(i / 3.0)))
+                predicted_occupancy = round(running_occ, 2)
+
+                h_str = dt.strftime("%H:00")
+                ts_str = dt.strftime("%Y-%m-%d %H:00")
                 
                 forecast_data.append({
                     "timestamp": h_str,
@@ -540,24 +576,39 @@ def forecast_beds(hours: int = 24) -> list:
         except Exception as e:
             print(f"Error running Prophet forecasting: {e}")
 
-    # Fallback oscillated trend with exact float precision
+    # Fallback dynamic trend with diurnal spikes and exact float precision
+    running_occ = current_occupancy
     for i in range(hours):
-        future_ts = now + timedelta(hours=i)
-        occupancy = round(float(180.0 + 20.0 * np.sin(i / 4.0) + (i % 6)), 2)
-        inflow = round(float(max(1.0, 6.0 + 3.0 * np.sin(i / 3.0))), 2)
-        h_str = future_ts.strftime("%H:00")
-        ts_str = future_ts.strftime("%Y-%m-%d %H:00")
+        dt = now + timedelta(hours=i)
+        h = dt.hour
+
+        morning_surge = float(np.exp(-((h - 10.5) ** 2) / 8.0))
+        evening_surge = float(np.exp(-((h - 20.0) ** 2) / 6.0))
+        night_dip = float(1.0 - 0.7 * np.exp(-((h - 3.5) ** 2) / 10.0))
+
+        base_adm = 7.0 + 8.5 * morning_surge + 11.5 * evening_surge
+        inflow = round(float(max(2.5, base_adm * night_dip * surge_mult * (1.0 + 0.12 * np.sin(i / 2.0)))), 2)
+
+        dis_peak = float(np.exp(-((h - 15.0) ** 2) / 10.0))
+        discharges = round(float(max(1.8, (5.5 + 8.5 * dis_peak) * (1.0 + 0.10 * np.cos(i / 2.0)))), 2)
+
+        net_flow = (inflow - discharges) * 0.75
+        running_occ = max(40.0, min(285.0, running_occ + net_flow + 2.0 * np.sin(i / 3.0)))
+        occupancy = round(float(running_occ), 2)
+
+        h_str = dt.strftime("%H:00")
+        ts_str = dt.strftime("%Y-%m-%d %H:00")
         forecast_data.append({
             "timestamp": h_str,
             "hour": h_str,
             "ts": ts_str,
-            "occupancy": max(0.0, min(300.0, occupancy)),
-            "predicted_occupancy": max(0.0, min(300.0, occupancy)),
-            "yhat": max(0.0, min(300.0, occupancy)),
+            "occupancy": occupancy,
+            "predicted_occupancy": occupancy,
+            "yhat": occupancy,
             "inflow": inflow,
             "admissions": inflow,
             "predicted_inflow": inflow,
-            "discharges": round(float(max(1.0, 4.0 + 1.5 * np.cos(i / 3.0))), 2),
+            "discharges": discharges,
             "oxygen": round(float(70.0 + 5.0 * np.sin(i / 6.0)), 2)
         })
     return forecast_data

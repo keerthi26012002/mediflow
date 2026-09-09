@@ -134,7 +134,10 @@ class ConnectionManager:
                 client_payload["alerts"] = filtered_alerts
 
             try:
-                await connection.send_json(client_payload)
+                try:
+                    await connection.send_json(client_payload)
+                except (TypeError, ValueError):
+                    await connection.send_text(json.dumps(client_payload, default=str))
             except Exception as e:
                 print(f"Error sending WebSocket message to {meta.get('email')}: {e}")
                 closed_connections.append(connection)
@@ -157,7 +160,10 @@ class ConnectionManager:
             client_payload["alerts"] = filtered_alerts
 
         try:
-            await websocket.send_json(client_payload)
+            try:
+                await websocket.send_json(client_payload)
+            except (TypeError, ValueError):
+                await websocket.send_text(json.dumps(client_payload, default=str))
         except Exception as e:
             print(f"Error sending immediate snapshot to {meta.get('email')}: {e}")
 

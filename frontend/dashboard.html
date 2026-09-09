@@ -56,7 +56,7 @@
       </form>
 
       <div style="margin-top: 1.25rem; border-top: 1px solid var(--card-border); padding-top: 1rem;">
-        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem;">Quick Role Demo Logins:</div>
+        <div style="font-size: 0.845rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem;">Quick Role Demo Logins:</div>
         <div class="quick-login-grid">
           <button class="quick-login-btn" onclick="quickFillLogin('admin@mediflow.ai', 'mediflow123')">
             <strong>Administrator</strong>
@@ -88,7 +88,7 @@
         <div class="logo-glow">M</div>
         <div>
           <h1>MediFlow AI Operations Control</h1>
-          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Real-Time Hospital Capacity Intelligence & Continuous Prediction Platform (v2.3)</div>
+          <div style="font-size: 0.875rem; color: var(--text-muted); margin-top: 2px;">Real-Time Hospital Capacity Intelligence & Continuous Prediction Platform (v2.3)</div>
         </div>
       </div>
 
@@ -110,8 +110,8 @@
 
         <!-- Policy selector -->
         <div class="policy-selector" id="policy-selector-container" style="margin-right: 0.8rem; display: flex; align-items: center; gap: 0.35rem;">
-          <label for="select-policy" style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Policy:</label>
-          <select id="select-policy" onchange="changePolicy(this.value)" style="background: var(--panel-subtle); color: var(--text-primary); border: 1px solid var(--card-border); padding: 0.2rem 0.4rem; border-radius: 6px; font-size: 0.75rem; cursor: pointer; outline: none; font-weight: 600;">
+          <label for="select-policy" style="font-size: 0.875rem; color: var(--text-muted); font-weight: 600;">Policy:</label>
+          <select id="select-policy" onchange="changePolicy(this.value)" style="background: var(--panel-subtle); color: var(--text-primary); border: 1px solid var(--card-border); padding: 0.2rem 0.4rem; border-radius: 6px; font-size: 0.875rem; cursor: pointer; outline: none; font-weight: 600;">
             <option value="DEFAULT">Default Optimization</option>
             <option value="PRESERVE_ICU">Preserve ICU Capacity</option>
             <option value="MAXIMIZE_THROUGHPUT">Maximize Throughput</option>
@@ -121,7 +121,7 @@
         <!-- User profile badge -->
         <div id="header-user-profile" style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.8rem;">
           <span class="role-badge admin" id="user-role-badge">ADMIN</span>
-          <span id="user-email-display" style="font-size: 0.76rem; color: var(--text-secondary); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">admin@mediflow.ai</span>
+          <span id="user-email-display" style="font-size: 0.885rem; color: var(--text-secondary); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">admin@mediflow.ai</span>
         </div>
 
         <button class="btn-sm btn-danger" onclick="handleLogout()" style="margin-right: 0.8rem;">Sign Out</button>
@@ -139,10 +139,10 @@
       <!-- Active Role Workspace Banner -->
       <div id="active-workspace-banner" style="background: var(--panel-subtle); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem 1.25rem; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-card);">
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <span id="ws-banner-icon" style="font-size: 1.5rem;">🏥</span>
+          <span id="ws-banner-icon" style="font-size: 1.625rem;">🏥</span>
           <div>
-            <div id="ws-banner-title" style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary);">Hospital Operations Overview</div>
-            <div id="ws-banner-subtitle" style="font-size: 0.75rem; color: var(--text-muted);">Real-time capacity tracking & ML prediction stream</div>
+            <div id="ws-banner-title" style="font-size: 1.075rem; font-weight: 800; color: var(--text-primary);">Hospital Operations Overview</div>
+            <div id="ws-banner-subtitle" style="font-size: 0.875rem; color: var(--text-muted);">Real-time capacity tracking & ML prediction stream</div>
           </div>
         </div>
         <span class="role-badge admin" id="ws-banner-role-badge">ADMIN</span>
@@ -150,9 +150,9 @@
 
       <!-- Unauthorized Workspace Access Fallback Panel -->
       <section class="glass-card" id="unauthorized-panel" style="display: none; border-left: 4px solid var(--status-danger); text-align: center; padding: 2.5rem 1.5rem;">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">🚫</div>
-        <h2 style="color: var(--status-danger); font-size: 1.25rem; margin-bottom: 0.5rem;">403 Forbidden — Insufficient Permissions</h2>
-        <p id="unauthorized-detail" style="color: var(--text-secondary); font-size: 0.85rem; max-width: 500px; margin: 0 auto 1.5rem auto;">
+        <div style="font-size: 3.125rem; margin-bottom: 1rem;">🚫</div>
+        <h2 style="color: var(--status-danger); font-size: 1.375rem; margin-bottom: 0.5rem;">403 Forbidden — Insufficient Permissions</h2>
+        <p id="unauthorized-detail" style="color: var(--text-secondary); font-size: 0.975rem; max-width: 500px; margin: 0 auto 1.5rem auto;">
           Your current account role does not have authorization to access this operational workspace.
         </p>
         <button class="btn-sm btn-primary" onclick="resetToAuthorizedWorkspace()">Return to Authorized Workspace</button>
@@ -164,29 +164,29 @@
           <h2>👥 Enterprise User Management & Access Control (RBAC)</h2>
           <button class="btn-sm btn-primary" onclick="openCreateUserModal()">+ Add New User</button>
         </div>
-        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+        <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.8rem;">
           Manage clinical staff, operations directors, and data analysts with strictly verified permissions.
         </div>
 
         <!-- Create user modal / inline form -->
         <div id="create-user-modal" style="display: none; background: var(--card-bg-solid); border: 1px solid var(--accent-cyan); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow-card);">
-          <h3 style="font-size: 0.9rem; margin-bottom: 0.75rem; color: var(--accent-cyan);">Create New MediFlow User</h3>
+          <h3 style="font-size: 1.025rem; margin-bottom: 0.75rem; color: var(--accent-cyan);">Create New MediFlow User</h3>
           <form onsubmit="handleCreateUserSubmit(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; align-items: flex-end;">
-            <label style="font-size: 0.75rem; color: var(--text-secondary);">
+            <label style="font-size: 0.875rem; color: var(--text-secondary);">
               Email Address
-              <input type="email" id="new-user-email" required placeholder="doctor@mediflow.ai" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.75rem; margin-top: 0.2rem;">
+              <input type="email" id="new-user-email" required placeholder="doctor@mediflow.ai" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.875rem; margin-top: 0.2rem;">
             </label>
-            <label style="font-size: 0.75rem; color: var(--text-secondary);">
+            <label style="font-size: 0.875rem; color: var(--text-secondary);">
               Username
-              <input type="text" id="new-user-username" required placeholder="dr_sarah" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.75rem; margin-top: 0.2rem;">
+              <input type="text" id="new-user-username" required placeholder="dr_sarah" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.875rem; margin-top: 0.2rem;">
             </label>
-            <label style="font-size: 0.75rem; color: var(--text-secondary);">
+            <label style="font-size: 0.875rem; color: var(--text-secondary);">
               Password (min 8 chars)
-              <input type="password" id="new-user-password" required minlength="8" placeholder="••••••••" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.75rem; margin-top: 0.2rem;">
+              <input type="password" id="new-user-password" required minlength="8" placeholder="••••••••" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.875rem; margin-top: 0.2rem;">
             </label>
-            <label style="font-size: 0.75rem; color: var(--text-secondary);">
+            <label style="font-size: 0.875rem; color: var(--text-secondary);">
               Assigned Role
-              <select id="new-user-role" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.75rem; margin-top: 0.2rem;">
+              <select id="new-user-role" style="width: 100%; padding: 0.35rem 0.5rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.875rem; margin-top: 0.2rem;">
                 <option value="DOCTOR">Doctor (Clinical)</option>
                 <option value="OPERATIONS_MANAGER">Operations Manager</option>
                 <option value="DATA_ANALYST">Data Analyst</option>
@@ -198,7 +198,7 @@
               <button type="button" class="btn-sm btn-secondary" onclick="closeCreateUserModal()">Cancel</button>
             </div>
           </form>
-          <div id="create-user-status" style="font-size: 0.75rem; margin-top: 0.5rem;"></div>
+          <div id="create-user-status" style="font-size: 0.875rem; margin-top: 0.5rem;"></div>
         </div>
 
         <div class="data-table-container">
@@ -222,7 +222,7 @@
         <!-- Security Audit Log Subsection -->
         <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--card-border);">
           <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="font-size: 0.95rem;">🔒 Security & Policy Audit Trail</h3>
+            <h3 style="font-size: 1.075rem;">🔒 Security & Policy Audit Trail</h3>
             <button class="btn-sm btn-secondary" onclick="loadAuditLogs()">Refresh Audit Trail</button>
           </div>
           <div class="data-table-container" style="max-height: 220px; overflow-y: auto;">
@@ -249,31 +249,31 @@
       <section class="glass-card" id="doctor-assessment-panel" style="display: none;">
         <div class="card-header">
           <h2>🩺 Clinical Patient Assessment & On-Demand Admission Prediction</h2>
-          <span style="font-size: 0.8rem; color: var(--accent-blue);">Doctor Triage Workflow</span>
+          <span style="font-size: 0.925rem; color: var(--accent-blue);">Doctor Triage Workflow</span>
         </div>
-        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem;">
+        <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
           Input incoming triage clinical factors to run on-demand XGBoost admission probability inference.
         </div>
 
         <form id="patient-assessment-form" onsubmit="handlePatientPrediction(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.85rem; align-items: flex-end;">
-          <label style="font-size: 0.75rem; color: var(--text-secondary);">
+          <label style="font-size: 0.875rem; color: var(--text-secondary);">
             Patient ID
-            <input type="text" id="triage-patient-id" required value="PT-8842" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.8rem; margin-top: 0.2rem;">
+            <input type="text" id="triage-patient-id" required value="PT-8842" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.925rem; margin-top: 0.2rem;">
           </label>
-          <label style="font-size: 0.75rem; color: var(--text-secondary);">
+          <label style="font-size: 0.875rem; color: var(--text-secondary);">
             Age
-            <input type="number" id="triage-age" min="1" max="110" value="62" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.8rem; margin-top: 0.2rem;">
+            <input type="number" id="triage-age" min="1" max="110" value="62" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.925rem; margin-top: 0.2rem;">
           </label>
-          <label style="font-size: 0.75rem; color: var(--text-secondary);">
+          <label style="font-size: 0.875rem; color: var(--text-secondary);">
             Gender
-            <select id="triage-gender" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.8rem; margin-top: 0.2rem;">
+            <select id="triage-gender" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.925rem; margin-top: 0.2rem;">
               <option value="M">Male</option>
               <option value="F">Female</option>
             </select>
           </label>
-          <label style="font-size: 0.75rem; color: var(--text-secondary);">
+          <label style="font-size: 0.875rem; color: var(--text-secondary);">
             Triage Severity (1-5)
-            <select id="triage-severity" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.8rem; margin-top: 0.2rem;">
+            <select id="triage-severity" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.925rem; margin-top: 0.2rem;">
               <option value="1">1 - Resuscitation (Critical)</option>
               <option value="2">2 - Emergent</option>
               <option value="3" selected>3 - Urgent</option>
@@ -281,13 +281,13 @@
               <option value="5">5 - Non-Urgent</option>
             </select>
           </label>
-          <label style="font-size: 0.75rem; color: var(--text-secondary);">
+          <label style="font-size: 0.875rem; color: var(--text-secondary);">
             Current ER Wait (mins)
-            <input type="number" id="triage-wait-time" min="0" max="300" value="35" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.8rem; margin-top: 0.2rem;">
+            <input type="number" id="triage-wait-time" min="0" max="300" value="35" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.925rem; margin-top: 0.2rem;">
           </label>
-          <label style="font-size: 0.75rem; color: var(--text-secondary);">
+          <label style="font-size: 0.875rem; color: var(--text-secondary);">
             Department
-            <select id="triage-department" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.8rem; margin-top: 0.2rem;">
+            <select id="triage-department" style="width: 100%; padding: 0.4rem; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-text); border-radius: 6px; font-size: 0.925rem; margin-top: 0.2rem;">
               <option value="Emergency">Emergency</option>
               <option value="Cardiology">Cardiology</option>
               <option value="Pulmonology">Pulmonology</option>
@@ -302,21 +302,21 @@
         <!-- Prediction result card -->
         <div id="triage-result-card" style="display: none; margin-top: 1rem; background: var(--panel-subtle); border: 1px solid var(--accent-blue); border-radius: 8px; padding: 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h4 style="font-size: 0.9rem; color: var(--text-primary);">Inference Result: <span id="res-patient-id" style="color: var(--accent-cyan);">PT-8842</span></h4>
+            <h4 style="font-size: 1.025rem; color: var(--text-primary);">Inference Result: <span id="res-patient-id" style="color: var(--accent-cyan);">PT-8842</span></h4>
             <span id="res-admission-badge" class="role-badge doctor">ADMIT TO GENERAL WARD</span>
           </div>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-top: 0.75rem;">
             <div>
-              <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">Admission Likelihood</span>
-              <strong id="res-proba" style="font-size: 1.25rem; color: var(--text-primary);">78.4%</strong>
+              <span style="font-size: 0.825rem; color: var(--text-muted); display: block;">Admission Likelihood</span>
+              <strong id="res-proba" style="font-size: 1.375rem; color: var(--text-primary);">78.4%</strong>
             </div>
             <div>
-              <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">Overload Flag</span>
-              <strong id="res-overload" style="font-size: 1.25rem; color: var(--status-ok);">NORMAL</strong>
+              <span style="font-size: 0.825rem; color: var(--text-muted); display: block;">Overload Flag</span>
+              <strong id="res-overload" style="font-size: 1.375rem; color: var(--status-ok);">NORMAL</strong>
             </div>
             <div>
-              <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">Recommended Ward</span>
-              <strong id="res-ward" style="font-size: 1.25rem; color: var(--accent-blue);">General Medicine</strong>
+              <span style="font-size: 0.825rem; color: var(--text-muted); display: block;">Recommended Ward</span>
+              <strong id="res-ward" style="font-size: 1.375rem; color: var(--accent-blue);">General Medicine</strong>
             </div>
           </div>
         </div>
@@ -372,7 +372,7 @@
         <div class="glass-card" id="twin-panel">
           <div class="card-header">
             <h2>🏥 Live Digital Twin Status</h2>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Real-Time Capacity Snapshots</span>
+            <span style="font-size: 0.925rem; color: var(--text-muted);">Real-Time Capacity Snapshots</span>
           </div>
           
           <div class="twin-grid">
@@ -432,10 +432,10 @@
           <div class="card-header" style="flex-wrap: wrap; gap: 0.5rem;">
             <h2>🔮 Continuous ML Demand Predictions</h2>
             <div class="horizon-tabs" style="display: flex; gap: 0.35rem; background: var(--panel-subtle); padding: 0.25rem; border-radius: 8px; border: 1px solid var(--card-border);">
-              <button class="active-tab" id="btn-30m" onclick="selectHorizon('30m')" style="background: var(--accent-blue); color: var(--bg-primary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">30m</button>
-              <button id="btn-1h" onclick="selectHorizon('1h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">1h</button>
-              <button id="btn-6h" onclick="selectHorizon('6h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">6h</button>
-              <button id="btn-24h" onclick="selectHorizon('24h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.75rem; transition: var(--transition-smooth);">24h</button>
+              <button class="active-tab" id="btn-30m" onclick="selectHorizon('30m')" style="background: var(--accent-blue); color: var(--bg-primary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.875rem; transition: var(--transition-smooth);">30m</button>
+              <button id="btn-1h" onclick="selectHorizon('1h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.875rem; transition: var(--transition-smooth);">1h</button>
+              <button id="btn-6h" onclick="selectHorizon('6h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.875rem; transition: var(--transition-smooth);">6h</button>
+              <button id="btn-24h" onclick="selectHorizon('24h')" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.875rem; transition: var(--transition-smooth);">24h</button>
             </div>
           </div>
           
@@ -445,88 +445,88 @@
               <div class="twin-title">Beds Demand</div>
               <div class="twin-val highlight-blue" id="pred-beds">0.0</div>
               <div class="twin-sub" id="pred-beds-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-beds-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-beds-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- ICU Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">ICU Bed Demand</div>
               <div class="twin-val highlight-cyan" id="pred-icu">0.0</div>
               <div class="twin-sub" id="pred-icu-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-icu-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-icu-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Doctors Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Docs Needed</div>
               <div class="twin-val highlight-yellow" id="pred-docs">0.0</div>
               <div class="twin-sub" id="pred-docs-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-docs-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-docs-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Nurses Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Nurses Needed</div>
               <div class="twin-val highlight-yellow" id="pred-nurses">0.0</div>
               <div class="twin-sub" id="pred-nurses-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-nurses-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-nurses-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Oxygen Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Oxygen Demand</div>
               <div class="twin-val highlight-blue" id="pred-oxygen">0.0%</div>
               <div class="twin-sub" id="pred-oxygen-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-oxygen-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-oxygen-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Ventilators Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Vents Needed</div>
               <div class="twin-val highlight-cyan" id="pred-vents">0.0</div>
               <div class="twin-sub" id="pred-vents-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-vents-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-vents-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Queue Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">ER Wait Queue</div>
               <div class="twin-val highlight-yellow" id="pred-queue">0</div>
               <div class="twin-sub" id="pred-queue-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-queue-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-queue-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Ambulance Demand -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Ambulances</div>
               <div class="twin-val highlight-blue" id="pred-ambulances">0.0</div>
               <div class="twin-sub" id="pred-ambulances-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-ambulances-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-ambulances-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Load Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Load Index</div>
               <div class="twin-val highlight-cyan" id="pred-load">0.0</div>
               <div class="twin-sub" id="pred-load-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-load-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-load-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Pressure Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Pressure Index</div>
               <div class="twin-val highlight-yellow" id="pred-pressure">0.0</div>
               <div class="twin-sub" id="pred-pressure-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-pressure-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-pressure-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
             <!-- Availability Required -->
             <div class="twin-item prediction-item">
               <div class="twin-title">Beds Free</div>
               <div class="twin-val highlight-blue" id="pred-availability">0.0</div>
               <div class="twin-sub" id="pred-availability-ci">CI: [0.0, 0.0]</div>
-              <div class="twin-sub" id="pred-availability-exp" style="font-size: 0.65rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
+              <div class="twin-sub" id="pred-availability-exp" style="font-size: 0.775rem; opacity: 0.6; line-height: 1.1; margin-top: 4px;">-</div>
             </div>
           </div>
           
           <!-- Active Prediction Explanation Details -->
           <div id="prediction-explanation-detail" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--card-border); display: none;">
-            <h4 style="font-size: 0.85rem; color: var(--accent-cyan); margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="font-size: 0.975rem; color: var(--accent-cyan); margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
               <span>🧠 Explainable AI attribution: <span id="exp-metric-name">Beds Demand</span></span>
-              <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;">Confidence: <span id="exp-confidence">100%</span></span>
+              <span style="font-size: 0.845rem; color: var(--text-muted); font-weight: normal;">Confidence: <span id="exp-confidence">100%</span></span>
             </h4>
-            <p id="exp-reasoning" style="font-size: 0.8rem; margin-bottom: 0.75rem; color: var(--text-secondary); line-height: 1.3;">-</p>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; font-weight: 600;">Local SHAP Feature Attribution Weights:</div>
+            <p id="exp-reasoning" style="font-size: 0.925rem; margin-bottom: 0.75rem; color: var(--text-secondary); line-height: 1.3;">-</p>
+            <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.4rem; font-weight: 600;">Local SHAP Feature Attribution Weights:</div>
             <div id="exp-shap-bars" style="display: grid; gap: 0.5rem;">
               <!-- Dynamic attributions list -->
             </div>
@@ -541,7 +541,7 @@
         <div class="glass-card" id="chart-panel">
           <div class="card-header">
             <h2>📈 24-Hour Predictive Demand Forecast</h2>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Model: Prophet Time Series</span>
+            <span style="font-size: 0.925rem; color: var(--text-muted);">Model: Prophet Time Series</span>
           </div>
           <div style="position: relative; height: 320px; width: 100%;">
             <canvas id="forecastChart"></canvas>
@@ -552,7 +552,7 @@
         <div class="glass-card" id="alert-recs-panel">
           <div class="card-header">
             <h2>⚡ Proactive Decision Recommendations</h2>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">AI Action Engine</span>
+            <span style="font-size: 0.925rem; color: var(--text-muted);">AI Action Engine</span>
           </div>
           <div class="recs-list" id="recs-feed">
             <div class="empty-alerts">
@@ -568,7 +568,7 @@
         <div class="glass-card" id="anomaly-panel">
           <div class="card-header">
             <h2>⚠️ Real-Time Operational Anomaly Timeline</h2>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Z-Score Statistical Outliers</span>
+            <span style="font-size: 0.925rem; color: var(--text-muted);">Z-Score Statistical Outliers</span>
           </div>
           <div class="recs-list" id="anomaly-feed" style="max-height: 250px; overflow-y: auto;">
             <div class="empty-alerts">
@@ -581,7 +581,7 @@
         <div class="glass-card" id="model-health-panel">
           <div class="card-header">
             <h2>🩺 Model Performance & Health Telemetry</h2>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Accuracy & Latency Metrics</span>
+            <span style="font-size: 0.925rem; color: var(--text-muted);">Accuracy & Latency Metrics</span>
           </div>
           <div class="twin-grid" style="grid-template-columns: repeat(2, 1fr); gap: 0.75rem;">
             <div class="twin-item">
@@ -612,7 +612,7 @@
       <section class="glass-card" id="alert-panel">
         <div class="card-header">
           <h2>🔔 System Overload & Capacity Alerts</h2>
-          <span style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" id="websocket-status">WS Connecting...</span>
+          <span style="font-size: 0.875rem; padding: 0.2rem 0.5rem;" id="websocket-status">WS Connecting...</span>
         </div>
         <div class="alert-feed-container" id="alert-feed">
           <div class="empty-alerts">

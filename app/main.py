@@ -15,7 +15,10 @@ async def lifespan(app: FastAPI):
     # Load ML models into memory
     from app.ml.inference import load_models
     load_models()
-    # Start background Kafka consumer
+    # Initialize authoritative state and baseline ML predictions
+    from app.consumer import initialize_baseline_state, start_background_consumer
+    await initialize_baseline_state()
+    # Start background streaming consumer
     start_background_consumer()
     yield
     # Shutdown actions
