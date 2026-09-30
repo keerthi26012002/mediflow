@@ -4,7 +4,7 @@ MediFlow AI is a healthcare operations intelligence platform designed to forecas
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 * **Real-time Event Ingestion:** Ingests live patient flow streams from Apache Kafka.
 * **Resilient Fallback Mode:** Automatically switches to an offline mock generator streaming from `datasets/Hospital ER_Data.csv` when Kafka is offline.
 * **Predictive AI Engine:**
@@ -15,7 +15,7 @@ MediFlow AI is a healthcare operations intelligence platform designed to forecas
 
 ---
 
-## 🛠️ Architecture Setup
+##  Architecture Setup
 
 1. **Environmental Setup:**
    Create a `.env` file from the template:
@@ -36,8 +36,6 @@ MediFlow AI is a healthcare operations intelligence platform designed to forecas
    ```
    Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 
-4. **Kaggle GPU Training:**
-   Refer to the training notebook in `notebooks/02_kaggle_gpu_training.ipynb` to optimize and tune models using Optuna on GPU accelerators.
 
 ---
 
